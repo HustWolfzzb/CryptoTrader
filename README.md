@@ -13,82 +13,142 @@
                                                     +----------------+
 # CryptoTrader
 
+CryptoTrader is an automated trading system designed to interface seamlessly with various cryptocurrency exchanges. The system integrates several modules, each responsible for specific aspects of the trading process, from data acquisition to risk management.
 
-Here's a README template for DataHandler.py, which provides a clear overview of the configurations, functionalities, and instructions on how to run data handler:
+## System Architecture
 
----
+CryptoTrader's workflow consists of the following key modules:
 
-## Configuration
+1. **数据获取 & 处理 (Data Acquisition & Processing)**:
+   - **Function**: Responsible for fetching and preprocessing market data to be used across all other modules.
+   - **Input**: Real-time data from cryptocurrency exchanges.
+   - **Output**: Cleaned and normalized data ready for analysis.
 
-Before running the scripts, configure the necessary credentials and parameters by creating a `Config.py` file in the root directory with the following contents:
+2. **指标计算模块 (Indicator Calculation Module)**:
+   - **Function**: Computes various trading indicators (e.g., SMA, EMA, RSI) used to assess market conditions.
+   - **Input**: Processed data from the Data Acquisition module.
+   - **Output**: Indicator values that feed into the Signal Generation module.
 
-```python
-# Configuration for API access
-ACCESS_KEY = 'your_access_key_here'
-SECRET_KEY = 'your_secret_key_here'
-PASSPHRASE = 'your_passphrase_here'
+3. **信号生成模块 (Signal Generation Module)**:
+   - **Function**: Analyzes indicators to generate trading signals.
+   - **Input**: Indicators from the Calculation module.
+   - **Output**: Buy or sell signals.
 
-# Configuration for database connection
-HOST_IP = 'database_host_ip'
-HOST_USER = 'database_user'
-HOST_PASSWD = 'database_password'
+4. **数据回测模块 (Data Backtesting Module)**:
+   - **Function**: Tests trading strategies using historical data to simulate performance and refine signals.
+   - **Input**: Trading signals.
+   - **Output**: Performance metrics and strategy refinement.
 
-# Optional: Additional host if used
-HOST_IP_1 = 'secondary_database_host_ip'
-```
+5. **交易执行引擎 (Trade Execution Engine)**:
+   - **Function**: Executes trades on the exchange based on signals received, considering current market conditions.
+   - **Input**: Confirmed signals from the Signal Generation or Backtesting Module.
+   - **Output**: Executed trades.
 
-## Features
+6. **风险管理模块 (Risk Management Module)**:
+   - **Function**: Continuously monitors and manages the risk associated with open positions and market conditions.
+   - **Input**: Ongoing market data and active trade information.
+   - **Output**: Risk assessment and management actions.
 
-- **Data Handling**: Connects to a MySQL database to manage trading data.
-- **Decimal Formatting**: Formats floating-point numbers in dataframes to specified decimal places.
-- **Numeric Conversion**: Converts specified dataframe columns to numeric types, handling non-numeric data gracefully.
-- **Database Operations**: Includes functionality to create tables, insert data, and remove duplicates to ensure data integrity.
-- **Data Fetching**: Enhanced fetching capabilities to retrieve historical trading data based on flexible querying of time ranges.
-
-## How to Run
+## Getting Started
 
 ### Prerequisites
+
 Ensure you have the following installed:
-- Python 3.6 or higher
-- `mysql-connector-python`
-- `pandas`
-- `tqdm`
+- Python 3.8 or higher
+- pip (Python package installer)
 
-### Running the Application
+### Installation
 
-1. **Setup the Database**: Ensure your MySQL database is running and accessible based on the credentials provided in `Config.py`.
-
-2. **Clone the Repository**:
+1. Clone the repository:
    ```bash
-   git clone https://github.com/YourUsername/CryptoTrader.git
+   git clone https://github.com/HustWolfzzb/CryptoTrader.git
+   ```
+
+2. Navigate to the cloned repository:
+   ```bash
    cd CryptoTrader
    ```
 
-3. **Install Dependencies**:
+3. Install required Python packages:
    ```bash
-   pip install -r requirements.txt  # Assuming you have a requirements.txt
+   pip install -r requirements.txt
    ```
 
-4. **Execute the Main Script**:
-   ```bash
-   python main.py  # Assuming your main script is named main.py
-   ```
+### Running the System
 
-   This will start the process of data fetching, processing, and populating your database with trading data.
-
-## Modules Description
-
-- `DataHandler`: Manages database connections and operations such as creating tables and inserting data.
-- `format_decimal_places(df, decimal_places=1)`: Formats the decimal places of float columns in a dataframe.
-- `convert_columns_to_numeric(df, columns=None)`: Converts columns in a dataframe to numeric types, useful for data processing before analysis.
-
-### Note
-Adjust the scripts according to your specific database schema and ensure that the required tables and columns are properly set up before running the scripts to avoid any runtime errors.
-
-## Contribution
-
-Contributions are welcome! Please fork the repository and submit pull requests to the main branch. For major changes, please open an issue first to discuss what you would like to change.
+To enhance the "Running the System" section of your README with specifics about starting various components from your Python files, I will provide an example of how to run some key components shown in the file listing. Here's how you might detail the execution of several scripts within your trading system:
 
 ---
 
-This README template provides a comprehensive guide to setting up and running your CryptoTrader project. It includes configuration details, a description of functionalities, and steps to get everything up and running smoothly. Adjust as necessary to fit the specifics of your project's requirements and dependencies.
+## Running the System
+
+CryptoTrader consists of multiple modules, each implemented as a separate Python script. Below are the steps to run the key components of the system:
+
+### Data Handling and Indicator Calculation
+
+1. **DataHandler.py**: This script is responsible for fetching and processing the raw market data.
+   ```bash
+   python DataHandler.py
+   ```
+
+2. **IndicatorCalculator.py**: After processing the data, run this script to calculate various trading indicators.
+   ```bash
+   python IndicatorCalculator.py
+   ```
+
+### Signal Generation and Execution
+
+3. **SignalGenerator.py**: Generates trading signals based on the indicators calculated previously.
+   ```bash
+   python SignalGenerator.py
+   ```
+
+4. **ExecutionEngine.py**: Executes trades based on the signals generated by the SignalGenerator.
+   ```bash
+   python ExecutionEngine.py
+   ```
+
+### Backtesting
+
+5. **BacktestingSystem.py**: To verify the efficacy of your trading strategies using historical data, run the backtesting system.
+   ```bash
+   python BacktestingSystem.py
+   ```
+
+### Monitoring
+
+6. **SystemMonitor.py**: This script can be used to monitor the system’s performance and health.
+   ```bash
+   python SystemMonitor.py
+   ```
+
+### Configuration
+
+Make sure to review and configure `Config.py` appropriately before running the scripts to ensure all modules interact correctly with each other and the target trading platform.
+
+```bash
+# Edit Config.py to suit your trading configuration
+nano Config.py
+```
+
+### Log Files
+
+Logs from the executions can be reviewed in the generated log files, such as `okex_execution_engine.log`, to analyze the trade executions and system behavior.
+
+### Note
+Ensure you have set up all necessary API keys and other configurations as required in `Config.py`. These scripts are interdependent, and their successful execution relies on the proper setup of environment variables and configurations.
+
+
+---
+
+## Contributing
+
+Contributions to CryptoTrader are welcome! Please read through our contributing guidelines to learn about our review process, coding conventions, and more.
+
+## License
+
+Distributed under the MIT License. See LICENSE for more information.
+
+---
+
+This README provides a concise overview of your trading system's architecture and includes basic instructions on how to get started. Modify and expand it as necessary to fit the specific details and complexities of your project.
