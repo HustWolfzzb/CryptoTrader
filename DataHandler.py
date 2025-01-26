@@ -379,7 +379,7 @@ if __name__ == '__main__':
     # print(df_kline_1m.head())
 
     # 假设data_handler是DataHandler的实例化对象
-    data_handler = DataHandler(HOST_IP, 'TradingData', 'root', 'zzb162122')
+    data_handler = DataHandler(HOST_IP, 'TradingData', HOST_USER, HOST_PASSWD)
     #
     # # 将数据插入到数据库中
     # data_handler.insert_data( 'ETH-USD-SWAP', '1m', df_kline_1m)
