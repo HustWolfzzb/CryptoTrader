@@ -65,10 +65,6 @@ Ensure you have the following installed:
    pip install -r requirements.txt
    ```
 
-### Running the System
-
-To enhance the "Running the System" section of your README with specifics about starting various components from your Python files, I will provide an example of how to run some key components shown in the file listing. Here's how you might detail the execution of several scripts within your trading system:
-
 ---
 
 ## Running the System
