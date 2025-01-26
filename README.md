@@ -67,12 +67,6 @@ Ensure you have the following installed:
 
 ---
 
-To extend the `README.md` with instructions on how to generate access keys, secret keys, and configure IP binding for running your trading system, you can add a section like this after the installation and requirements setup:
-
----
-
-## Configuration
-
 ### Generating Access and Secret Keys
 
 To securely interact with cryptocurrency exchanges, you will need to generate access keys and secret keys. These keys are essential for authentication and authorization processes. Here's how to set them up:
