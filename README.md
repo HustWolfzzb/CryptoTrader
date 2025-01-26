@@ -139,7 +139,3 @@ Contributions to CryptoTrader are welcome! Please read through our contributing 
 ## License
 
 Distributed under the MIT License. See LICENSE for more information.
-
----
-
-This README provides a concise overview of your trading system's architecture and includes basic instructions on how to get started. Modify and expand it as necessary to fit the specific details and complexities of your project.
