@@ -1,5 +1,6 @@
+from Config import ACCESS_KEY, SECRET_KEY, PASSPHRASE, HOST_IP, HOST_USER, HOST_PASSWD, HOST_IP_1
 import logging
-from okex import OkexSpot, get_okexExchage, ACCESS_KEY, SECRET_KEY, PASSPHRASE  # Ensure this import matches your actual API wrapper file and class
+from okex import OkexSpot, get_okexExchage
 import time
 
 
