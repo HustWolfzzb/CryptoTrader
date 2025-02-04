@@ -10,6 +10,7 @@ CryptoTrader is an automated trading system designed to interface seamlessly wit
 
 CryptoTrader's workflow consists of the following key modules:
 
+
 1. **数据获取 & 处理 (Data Acquisition & Processing)**:
    - **Function**: Responsible for fetching and preprocessing market data to be used across all other modules.
    - **Input**: Real-time data from cryptocurrency exchanges.
@@ -39,6 +40,11 @@ CryptoTrader's workflow consists of the following key modules:
    - **Function**: Continuously monitors and manages the risk associated with open positions and market conditions.
    - **Input**: Ongoing market data and active trade information.
    - **Output**: Risk assessment and management actions.
+
+7. **策略模块 (Strategy Module)**:
+   - **Function**: Facilitates the implementation of various trading strategies directly. This module allows users to apply and test different strategic approaches using the available market data and indicators.
+   - **Input**: Market data and indicators from the Indicator Calculation Module.
+   - **Output**: Configured strategy parameters that guide the trading decisions in the Signal Generation Module.
 
 ## Getting Started
 
@@ -150,7 +156,7 @@ Once MySQL is installed, you need to create a database and user specifically for
      FLUSH PRIVILEGES;
      ```
 
-### Configuring the Trading Bot
+### Configuring the Database Info
 
 Update the trading bot's configuration to use the newly created MySQL database:
 
