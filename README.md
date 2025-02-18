@@ -1,4 +1,25 @@
-![Flowchart](flow.png)
+
+    
+    # 资产与持仓数据
+
+    ## 持仓信息
+    | 产品ID | 持仓数量 | 开仓平均价 | 强平价格 | 最新价格 |
+| ------ | -------- | ---------- | -------- | -------- |
+| TRX-USDT-SWAP | 0.01 | 0.238 |  | 0.24052 |
+| TRUMP-USDT-SWAP | 186 | 20.1398610571317541 |  | 17.115 |
+
+
+    ## _rates 信息
+    | 产品ID | gap | sell | price_bit | amount_base | change_base | change_gap | change_amount |
+| ------ | --- | ---- | --------- | ----------- | ----------- | ---------- | ------------- |
+| TRX-USDT-SWAP | 0.002 | 2 | 5 | 0.1 | 0.232 | 0.0116 | 0.02 |
+| TRUMP-USDT-SWAP | 0.188 | 6.66 | 3 | 2 | 20 | 1.88 | 1 |
+
+
+    ## 资产总额变化
+    ![资产变化趋势](asset_trend.png)
+    
+    ![Flowchart](flow.png)
 
 # CryptoTrader
 
