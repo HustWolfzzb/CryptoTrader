@@ -1,8 +1,5 @@
 ![Flowchart](flow.png)
 
-
-
-
 # CryptoTrader
 
 CryptoTrader is an automated trading system designed to interface seamlessly with various cryptocurrency exchanges. The system integrates several modules, each responsible for specific aspects of the trading process, from data acquisition to risk management.
