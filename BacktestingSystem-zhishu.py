@@ -19,10 +19,10 @@ def log_info(message):
 class BacktestingSystem:
     def __init__(self, initial_capital=10000, leverage=10):
         log_info("Initializing Backtest System with initial capital: ${}".format(initial_capital))
-        self.data_handler = DataHandler(HOST_IP_1, 'TradingData', HOST_USER, HOST_PASSWD)
-        # self.data_handler = DataHandler(HOST_IP, 'TradingData', HOST_USER, HOST_PASSWD)
+        # self.data_handler = DataHandler(HOST_IP_1, 'TradingData', HOST_USER, HOST_PASSWD)
+        self.data_handler = DataHandler(HOST_IP, 'TradingData', HOST_USER, HOST_PASSWD)
         self.indicator_calculator = IndicatorCalculator(self.data_handler)
-        self.df_1m = self.fetch_and_log('ETH-USD-SWAP', '1m', '2023-08-17', '2024-11-20')
+        self.df_1m = self.fetch_and_log('ETH-USD-SWAP', '15m', '2023-08-17', '2024-11-20')
         self.df = self.df_1m
 
         self.capital = initial_capital

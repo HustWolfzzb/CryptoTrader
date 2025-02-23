@@ -282,7 +282,7 @@ def get_all_binance_data(symbol_now='ETHUSDT'):
     # Usage example
     base_url = "https://data.binance.vision/data/spot/daily/klines"
     symbol = symbol_now
-    start_date = datetime(2017, 8, 17)
+    start_date = datetime(2021, 5, 10)
     end_date = datetime.now()
     intervals = ['1m', '15m', '30m', '1h', '4h', '1d']
     download_and_process_binance_data(base_url, symbol, start_date, end_date, intervals)
@@ -347,18 +347,18 @@ def insert_binance_data_into_mysql(data_handler, symbol_now='ETHUSDT'):
         'BTCUSDT':'BTC-USDT',
         'ETHBTC':'ETH-BTC',
     }
-    start_date = '2017-08-17'
+    start_date = '2021-05-10'
     end_date = '2024-12-10'
     for interval in tqdm(['1m', '15m', '30m', '1h', '4h', '1d']):
         df1 = read_processed_data(symbol, interval, start_date, end_date)
         print(df1.head(), '\n', df1.tail(), '\n', len(df1))
-        batch_insert_data(data_handler, symbol2table[symbol], interval, df1)
+        batch_insert_data(data_handler, symbol2table[symbol] if symbol in symbol2table else symbol, interval, df1)
         # batch_insert_data(data_handler, 'ETH-USD-SWAP', interval, df1)
 
 
 
 if __name__ == '__main__':
-    from okex import OkexSpot, ACCESS_KEY, SECRET_KEY, PASSPHRASE
+    from okex import OkexSpot
     # 假设exchange是OkexSpot的实例化对象
     exchange = OkexSpot(
             symbol="ETH-USD-SWAP",
@@ -379,7 +379,7 @@ if __name__ == '__main__':
     # print(df_kline_1m.head())
 
     # 假设data_handler是DataHandler的实例化对象
-    data_handler = DataHandler(HOST_IP, 'TradingData', HOST_USER, HOST_PASSWD)
+    data_handler = DataHandler(HOST_IP_1, 'TradingData', HOST_USER, HOST_PASSWD)
     #
     # # 将数据插入到数据库中
     # data_handler.insert_data( 'ETH-USD-SWAP', '1m', df_kline_1m)
@@ -390,6 +390,6 @@ if __name__ == '__main__':
     # data_handler.insert_data( 'ETH-USD-SWAP', '1d', df_kline_1d)
 
 
-    get_all_binance_data('ETHBTC')
+    get_all_binance_data('SHIBUSDT')
     insert_binance_data_into_mysql(data_handler, 'ETHBTC')
     data_handler.close()

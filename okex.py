@@ -462,7 +462,8 @@ def get_rates():
     except Exception as e:
         _rates = {
         # 'ETH-USD-SWAP': {'gap': 30, 'sell': 3, 'price_bit': 2, 'amount_base':3, 'change_base':3000, 'change_gap': 120, 'change_amount':1},
-        'ETH-USD-SWAP': {'gap': 30, 'sell': 1, 'price_bit': 2, 'amount_base':3, 'change_base':3300, 'change_gap': 300, 'change_amount':1},
+        'ETH-USDT-SWAP': {'gap': 12.88, 'sell': 6.66, 'price_bit': 2, 'amount_base':0.1, 'change_base':2700, 'change_gap': 88.88, 'change_amount':0.01},
+        'BTC-USDT-SWAP': {'gap': 288.88, 'sell':6.66 , 'price_bit': 1, 'amount_base':0.01, 'change_base':96000, 'change_gap': 8888.88, 'change_amount':0.01},
                 # 'SHIB-USDT-SWAP': {'gap': 0.0000002, 'sell': 10, 'price_bit': 8, 'amount_base':1, 'change_base':0.000026, 'change_gap': 0.000001, 'change_amount':1},
                 # 'DOGE-USDT-SWAP': {'gap': 0.0025, 'sell': 2.5, 'price_bit': 5, 'amount_base':1, 'change_base':0.14, 'change_gap': 0.01, 'change_amount':1},
                 # 'ETH-BTC': {'gap': 0.00008, 'sell': 10, 'price_bit': 5, 'amount_base':0.002, 'change_base':0.05150, 'change_gap': 0.0006, 'change_amount':0.001},
@@ -470,17 +471,12 @@ def get_rates():
         print("Load Rates Failed")
         with open('_rates.txt', 'w') as out:
             out.write(json.dumps(_rates, indent=4))
-    if get_host_ip().find('66') != -1:
-        access_key = ACCESS_KEY,
-        secret_key = SECRET_KEY,
-        passphrase = PASSPHRASE,
-        host = None
-    exchanges = [OkexSpot(
-            symbol=x,
-            access_key=access_key,
-            secret_key=secret_key,
-            passphrase=passphrase,
-            host=host) for x in _rates.keys()]
+    access_key = ACCESS_KEY,
+    secret_key = SECRET_KEY,
+    passphrase = PASSPHRASE,
+    host = None
+    # print(list(_rates.keys()))
+    exchanges = [get_okexExchage(x[:x.find('-')].lower()) for x in list(_rates.keys())]
 
     update_rates(_rates)
     return exchanges, _rates
@@ -844,30 +840,9 @@ def output_record(orderNo, exchange, filename='exist_okex.txt', data={}):
 
     os.system('clear; tail -n 15 exist_okex.txt')
     print("="*50 + '|'*20 + '='*50)
-    if exchange.symbol.upper().find("SHIB-USDT-SWAP") != -1:
-        money = float(data['sz']) * 1000000 * float(data['px'])
-    elif exchange.symbol.upper().find("ETH-BTC") != -1:
-        exchange1 = OkexSpot(
-                        symbol="ETH-USD-SWAP",
-                        access_key=ACCESS_KEY,
-                        secret_key=SECRET_KEY,
-                        passphrase=PASSPHRASE,
-                        host=None
-                    )
-        money = float(data['sz']) * exchange1.get_price_now()
-    elif exchange.symbol.upper().find("ETH-USD-SWAP") != -1:
-        money = float(data['sz']) * 10
-    elif exchange.symbol.upper().find("ANC-USDT-SWAP") != -1:
-        exchange4 = [x for x in exchanges if x.symbol == 'ANC-USDT-SWAP'][0]
-    elif exchange.symbol.upper().find("LUNA-USDT-SWAP") != -1:
-        exchange4 = [x for x in exchanges if x.symbol == 'LUNA-USDT-SWAP'][0]
-        money = float(data['sz']) * exchange4.get_price_now()
-    elif exchange.symbol.upper().find("DOGE-USDT-SWAP") != -1:
-        exchange4 = [x for x in exchanges if x.symbol == 'DOGE-USDT-SWAP'][0]
-        money = float(data['sz']) * exchange4.get_price_now() * 1000
     record = "\r[%s] [%s %s, SUCCESS! [%s\t%s\t%s]]..." % (BeijingTime(), data['side'].upper(),
                                             exchange.symbol.upper(), data['px'],
-                                            money , data['sz'])
+                                             data['sz'])
     print(record, '\n')
     f = open(filename, 'a')
     print(record, file=f)
@@ -878,8 +853,8 @@ def grid_heyue(exchanges, _rates=None):
     os.system('tail -n 10 exist_okex.txt')
     print("="*50 + '|'*20 + '='*50)
     Error_flag = False
-    # if not _rates:
-    #     _rates = get_rates()
+    if not _rates:
+        _, _rates = get_rates()
     count = 0
     symbols = [x.symbol for x in exchanges]
     buy_orders = {x:'' for x in symbols}
@@ -890,6 +865,17 @@ def grid_heyue(exchanges, _rates=None):
     sell_prices = {symbol:round(init_prices[symbol] + _rates[symbol]['gap'] * _rates[symbol]['sell'], _rates[symbol]['price_bit'])  for symbol in symbols}
     for exchange in exchanges:
         symbol = exchange.symbol
+        response = exchange.get_posistion()[0]
+        # 如果API返回的代码不是'0'，记录错误消息
+        if response['code'] == '0' and response['data']:  # 确保响应代码为'0'且有数据
+            data = response['data'][0]
+            if float(data['avgPx']):
+                _rates[symbol]['change_base'] = float(data['avgPx'])
+                print('开仓均价为： {} '.format(_rates[symbol]['change_base']))
+                update_rates(_rates)
+        else:
+            print('开仓均价为默认： {} '.format(_rates[symbol]['change_base']))
+
         open_order_id, _ = exchange.get_open_orders('SWAP')
         if not open_order_id:
             for i in range(5):
@@ -910,10 +896,10 @@ def grid_heyue(exchanges, _rates=None):
                 sell_orders[symbol] = idx
                 sell_amount = s['sz']
         if len(buy_orders[symbol]) == 0:
-            buy_amount = _rates[symbol]['amount_base'] + _rates[symbol]['change_amount'] * int(abs((_rates[symbol]['change_base'] - buy_price) // _rates[symbol]['change_gap']))
+            buy_amount = _rates[symbol]['amount_base'] + _rates[symbol]['change_amount'] * int(abs(_rates[symbol]['change_base'] - buy_price) // _rates[symbol]['change_gap'])
             buy_orders[symbol], _ = exchange.buy(buy_price, buy_amount, tdMode='cross')
         if len(sell_orders[symbol]) == 0:
-            sell_amount = _rates[symbol]['amount_base'] + _rates[symbol]['change_amount'] * int(abs((_rates[symbol]['change_base'] - sell_price) // _rates[symbol]['change_gap']))
+            sell_amount = _rates[symbol]['amount_base'] + _rates[symbol]['change_amount'] * int(abs(_rates[symbol]['change_base'] - sell_price) // _rates[symbol]['change_gap'])
             sell_amount = round(sell_amount, 4)
             sell_orders[symbol], _ = exchange.sell(sell_price, sell_amount, tdMode='cross')
         print("%s INTO CIRCLE, \n\tBuy order:%s, price:%s, amount:%s"%(symbol, buy_orders[symbol], buy_price, buy_amount))
@@ -924,11 +910,18 @@ def grid_heyue(exchanges, _rates=None):
     while True:
         if count > 86400:
             count = 0
-        if count % 3600 == 0:
-            exchanges,_rates = get_rates()
+        if count % 10000 == 0:
+            _, _rates = get_rates()
+            response = exchange.get_posistion()[0]
+            # 如果API返回的代码不是'0'，记录错误消息
+            if response['code'] == '0' and response['data']:  # 确保响应代码为'0'且有数据
+                data = response['data'][0]
+                if float(data['avgPx']):
+                    _rates[symbol]['change_base'] = float(data['avgPx'])
+                update_rates(_rates)
         for exchange in exchanges:
             symbol = exchange.symbol
-            # init_price = init_prices[symbol]
+            # init_price = init_prices[symbosl]
             buy_order = buy_orders[symbol]
             sell_order = sell_orders[symbol]
             orders_exist, _  = exchange.get_open_orders('SWAP')
@@ -943,31 +936,21 @@ def grid_heyue(exchanges, _rates=None):
             else:
                 if buy_order not in orders_exist and sell_order not in orders_exist:
                     print("异常异常！居然都没了！")
-                    output_record(buy_order, exchange, data={'sz':buy_prices[symbol] * _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * abs((_rates[symbol]['change_base'] - price_now) // _rates[symbol]['change_gap']), 'px':buy_price, 'side':'BUY'})
-                    output_record(sell_order, exchange, data={'sz':sell_prices[symbol] * _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * abs((_rates[symbol]['change_base'] - price_now) // _rates[symbol]['change_gap']), 'px':buy_price, 'side':'SELL'})
                     buy_price = round(init_prices[symbol] - gap, _rates[symbol]['price_bit'])
                     buy_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * int( abs((_rates[symbol]['change_base'] - buy_price) // _rates[symbol]['change_gap']))
                     buy_orders[symbol], _ = exchange.buy(buy_price, buy_amount, order_type='limit', tdMode='cross')
                     sell_price = round(init_prices[symbol] + _rates[symbol]['gap'] * _rates[symbol]['sell'], _rates[symbol]['price_bit'])
-                    sell_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] *  int( abs((_rates[symbol]['change_base'] - sell_price) // _rates[symbol]['change_gap']))
+                    sell_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] *  int( abs(_rates[symbol]['change_base'] - sell_price) // _rates[symbol]['change_gap'])
                     sell_orders[symbol], _ = exchange.sell(sell_price, sell_amount, order_type='limit', tdMode='cross')
                     continue
                 elif buy_order not in orders_exist:
                     try:
                     # if 1 > 0:
                         # 先对外宣告上一单完成了
-                        #print("local - 0")
-                        output_record(buy_order, exchange, data={
-                            'sz': buy_prices[symbol] * _rates[symbol]['amount_base'] + _rates[symbol][
-                                'change_amount'] * abs(
-                                (_rates[symbol]['change_base'] - price_now) // _rates[symbol]['change_gap']),
-                            'px': buy_price, 'side': 'BUY'})
-
-                        #print("local - 1")
                         # 建立同一方向的新单子
                         init_prices[symbol] -= gap
                         buy_price = round(init_prices[symbol] - gap, _rates[symbol]['price_bit'])
-                        buy_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * abs((_rates[symbol]['change_base'] - price_now) // _rates[symbol]['change_gap'])
+                        buy_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * int(abs(_rates[symbol]['change_base'] - buy_price) // _rates[symbol]['change_gap'])
                         #print("local - 2")
                         buy_order, _ = exchange.buy(round(buy_price, _rates[symbol]['price_bit']), buy_amount, order_type='limit', tdMode='cross')
                         print((round(buy_price, _rates[symbol]['price_bit']), buy_amount))
@@ -999,17 +982,10 @@ def grid_heyue(exchanges, _rates=None):
                             break
 
                 elif sell_order not in orders_exist:
-                # try:
-                    output_record(sell_order, exchange, data={
-                        'sz': sell_prices[symbol] * _rates[symbol]['amount_base'] + _rates[symbol][
-                            'change_amount'] * abs(
-                            (_rates[symbol]['change_base'] - price_now) // _rates[symbol]['change_gap']),
-                        'px': buy_price, 'side': 'SELL'})
-
                     init_prices[symbol] += gap
                     sell_price = round(init_prices[symbol] + _rates[symbol]['gap'] * _rates[symbol]['sell'],
                                        _rates[symbol]['price_bit'])
-                    sell_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * abs((_rates[symbol]['change_base'] - price_now) // _rates[symbol]['change_gap'])
+                    sell_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * int(abs(_rates[symbol]['change_base'] - sell_price) // _rates[symbol]['change_gap'])
                     sell_order, _ = exchange.sell(round(sell_price, _rates[symbol]['price_bit']), sell_amount, order_type='limit', tdMode='cross')
                     if not sell_order:
                         print(sell_price, sell_amount)
@@ -1020,16 +996,6 @@ def grid_heyue(exchanges, _rates=None):
                     data = {'price': init_prices[symbol], 'amount': sell_amount / sell_price, 'sell_money': sell_amount}
                     save_trade_log_once(symbol, {symbol: data})
                     continue
-                # except Exception as e:
-                #     print("卖单异常")
-                #     print(e)
-                #     if str(e).find('Timeout') != -1:
-                #         continue
-                #     count += 1
-                #     continue
-                #     if count > 20:
-                #         Error_flag = True
-                #         break
             lowP = round(init_prices[symbol] - gap, _rates[symbol]['price_bit'])
             highP = round(init_prices[symbol] + _rates[symbol]['gap'] * _rates[symbol]['sell'],
                                            _rates[symbol]['price_bit'])
@@ -1209,7 +1175,7 @@ def grid_eth(exchanges, _rates=None):
                     sell_order, _ = exchange.sell(round(sell_price)+0.88, 0.1 + 0.01 * sell_times // 1.5,
                                                   order_type='limit', tdMode='cross')
                     if not sell_order:
-                        print(sell_price, 0.1)
+                        # print(sell_price, 0.1)
                         break
                     sell_orders[symbol] = sell_order
                     exchange.amend_order(orderId=buy_order,
@@ -1337,5 +1303,10 @@ def pin_capture_trading(e2, interval=0.5, range_start=2, range_end=10, amount=1)
 
 if __name__ == '__main__':
     exchanges ,_rates = get_rates()
-
-    x = grid_heyue(exchanges, _rates)
+    # print(_rates)
+    while True:
+        try:
+            grid_heyue(exchanges, _rates)
+        except Exception as e:
+            print(e)
+            time.sleep(10)

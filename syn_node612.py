@@ -56,17 +56,17 @@ class ChangeHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         file_path = event.src_path
-        if file_path.endswith(('.csv', '.py', '.keras', '.txt')):
+        if file_path.endswith(('.csv', '.py', '.keras', '.txt', '.md')):
             relative_path = os.path.relpath(file_path, self.local_dir)
             for host in self.remote_hosts:
                 remote_path = f"/home/zzb/Quantify/okx/{relative_path}"
                 transfer_file(file_path, remote_path, host)
 
-        if file_path.endswith(('.py')):
+        if file_path.endswith(('.py', '.md')):
             relative_path = os.path.relpath(file_path, self.local_dir)
             for host in [HOST_IP, '66.187.4.55']:
                 remote_path = f"/root/Quantify/okx/{relative_path}"
-                transfer_file(file_path, remote_path, host, 'root')
+                transfer_file(file_path, remote_path, host, HOST_USER)
 
 
 
@@ -83,3 +83,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
+    
