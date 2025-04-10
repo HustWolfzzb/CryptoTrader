@@ -226,7 +226,7 @@ def download_and_process_binance_data(base_url, symbol, start_date, end_date, in
             # Check if the file already exists to avoid re-downloading
             if not os.path.exists(target_csv_path):
                 print('\r{} - {} --> {}'.format(interval, current_date, end_date), end='')
-                time.sleep(1 + random.randint(0, 100) / 20)
+                time.sleep(1 + random.randint(0, 20) / 20)
                 # Construct the URL and download the file
                 url = f"{base_url}/{symbol}/{interval}/{filename}"
                 response = requests.get(url)
@@ -249,7 +249,9 @@ def download_and_process_binance_data(base_url, symbol, start_date, end_date, in
                     os.remove(zip_path)
                     IS_DOWNLOAD = True
                 else:
+                    time.sleep(60)
                     print(f"Failed to download data for {date_str}: Status code {response.status_code}")
+
 
             # Read, process, and save the CSV data
             if os.path.exists(target_csv_path) and IS_DOWNLOAD:
@@ -282,9 +284,10 @@ def get_all_binance_data(symbol_now='ETHUSDT'):
     # Usage example
     base_url = "https://data.binance.vision/data/spot/daily/klines"
     symbol = symbol_now
-    start_date = datetime(2021, 5, 10)
+    start_date = datetime(2020, 5, 10)
     end_date = datetime.now()
     intervals = ['1m', '15m', '30m', '1h', '4h', '1d']
+    intervals = ['1d']
     download_and_process_binance_data(base_url, symbol, start_date, end_date, intervals)
 
 
@@ -347,7 +350,7 @@ def insert_binance_data_into_mysql(data_handler, symbol_now='ETHUSDT'):
         'BTCUSDT':'BTC-USDT',
         'ETHBTC':'ETH-BTC',
     }
-    start_date = '2021-05-10'
+    start_date = '2020-05-10'
     end_date = '2024-12-10'
     for interval in tqdm(['1m', '15m', '30m', '1h', '4h', '1d']):
         df1 = read_processed_data(symbol, interval, start_date, end_date)
@@ -388,8 +391,10 @@ if __name__ == '__main__':
     # data_handler.insert_data( 'ETH-USD-SWAP', '1h', df_kline_1h)
     # data_handler.insert_data( 'ETH-USD-SWAP', '4h', df_kline_4h)
     # data_handler.insert_data( 'ETH-USD-SWAP', '1d', df_kline_1d)
-
-
-    get_all_binance_data('SHIBUSDT')
-    insert_binance_data_into_mysql(data_handler, 'ETHBTC')
-    data_handler.close()
+    # 'xrp', 'bnb', 'sol', 'ada', 'doge', 'trx', 
+    for coin in ['shib', 'link', 'dot', 'om', 'apt', 'uni', 'hbar', 'ton', 'sui', 'avax', 'fil', 'ip', 'gala', 'sand']:
+        coin_name = coin.upper() + 'USDT'
+        print('process coin:', coin_name)
+        get_all_binance_data(coin_name)
+        insert_binance_data_into_mysql(data_handler, coin_name)
+        data_handler.close()

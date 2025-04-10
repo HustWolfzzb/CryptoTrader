@@ -1,20 +1,43 @@
 from Config import ACCESS_KEY, SECRET_KEY, PASSPHRASE, HOST_IP, HOST_USER, HOST_PASSWD, HOST_IP_1
 import logging
-from okex import OkexSpot, get_okexExchage
+from okex import get_okexExchage, BeijingTime
 import time
+from average_method import get_good_bad_coin_group
+import json
+
+rate_price2order = {
+    'btc': 0.01,
+    'eth': 0.1,
+    'xrp': 100,
+    'bnb': 0.01,
+    'sol': 1,
+    'ada': 100,
+    'doge': 1000,
+    'trx': 1000,
+    'ltc': 1,
+    'shib': 1000000,
+    'link' : 1,
+    'dot' : 1,
+    'om' : 10,
+    'apt' : 1,
+    'uni' : 1,
+    'hbar' : 100,
+    'ton' : 1,
+    'sui' : 1,
+    'avax' : 1,
+    'fil' : 0.1,
+    'ip' : 1,
+    'gala': 10,
+    'sand' : 10,
+    }
 
 
 class OkexExecutionEngine:
-    def __init__(self):
+    def __init__(self, account=0):
         """
         Initialize the execution engine with API credentials and setup logging.
         """
-        self.okex_spot = OkexSpot(symbol="ETH-USD-SWAP",
-            access_key=ACCESS_KEY,
-            secret_key=SECRET_KEY,
-            passphrase=PASSPHRASE,
-            host=None
-        )
+        self.okex_spot = get_okexExchage('eth', account)
         self.logger = logging.getLogger('OkexExecutionEngine')
         self.setup_logger()
         self.init_balance = float(self.fetch_balance('USDT')['total_equity_usd'])
@@ -140,7 +163,6 @@ class OkexExecutionEngine:
                         mark_px = float(position_info['最新标记价格'])
                         pos_qty = float(position_info['持仓数量'])
                         pos_side = position_info['持仓方向']
-
                         if pos_qty > 0:
                             order_response, _ = self.okex_spot.sell(mark_px * 0.9975, abs(pos_qty), 'limit', 'cross')
                         else:
@@ -243,12 +265,52 @@ class OkexExecutionEngine:
             count+=1
 
 
-    def trigger_stop_loss(self):
+    def trigger_stop_loss(self, symbols = ['eth']):
         # 执行止损操作
-        symbols = ['ETH-USDT-SWAP', 'BTC-USDT-SWAP', 'SHIB-USDT-SWAP']
-        for symbol in symbols:
-            self.set_stop_loss(symbol)
-            print(f"Stop loss executed for {symbol}")
+        position_finish_info_epoch = {}
+        best_coin_rate = 0
+        best_coin = 'btc'
+        for coin in symbols:
+            try:
+                position_info = self.fetch_position(f'{coin.upper()}-USDT-SWAP', show=False)
+                if position_info:
+                    avg_px = float(position_info['开仓平均价'])
+                    liq_px = float(position_info['预估强平价'])
+                    mark_px = float(position_info['最新标记价格'])
+                    pos_qty = float(position_info['持仓数量'])
+                    pos_side = position_info['持仓方向']
+                    profile_now = float(position_info['未实现收益'])
+                    unit_price = rate_price2order[coin]  # 获取当前币种的单位价格比重
+                    base_order_money = unit_price * mark_px
+                    open_position = pos_qty * base_order_money
+                    profile_rate = profile_now / abs(open_position)
+                    position_info['每张价值'] = base_order_money
+                    position_info['本次开仓价值'] = open_position
+                    position_info['本次开仓收益率'] = profile_rate
+                    position_finish_info_epoch[coin] = position_info
+                    if pos_qty < 0 and profile_rate <= 0:
+                        if abs(profile_rate) > best_coin_rate:
+                            best_coin_rate = abs(profile_rate)
+                            best_coin = coin
+                    if pos_qty > 0 and profile_rate >= 0:
+                        if profile_rate > best_coin_rate:
+                            best_coin_rate = abs(profile_rate)
+                            best_coin = coin
+                    if pos_qty > 0:
+                        order_price = mark_px - 2.88 if mark_px > 10000 else mark_px - 0.68
+                        order_response, _ = self.okex_spot.sell(order_price, abs(pos_qty), 'MARKET', 'cross')
+                    else:
+                        order_price = mark_px - 2.88 if mark_px > 10000 else mark_px - 0.68
+                        order_response, _ = self.okex_spot.buy(order_price, abs(pos_qty), 'MARKET', 'cross')
+                    print(order_response)
+            except Exception as e:
+                print(coin, e)
+                continue
+
+        with open(f'trade_log_okex/tradePostionRecord-{BeijingTime()}.txt', 'w', encoding='utf8') as f:
+            string = json.dumps(position_finish_info_epoch, indent=4)
+            f.write(string)
+        return best_coin
 
     def soft_stop(self, coins=['eth', 'btc']):
         for coin in coins:
@@ -380,25 +442,217 @@ def init_all_thing():
     return engine, eth, btc
 
 
+
+
+def place_incremental_orders(usdt_amount, coin, direction, rap=None):
+    exchange = get_okexExchage(coin)
+    if rap:
+        unit_price = rate_price2order[rap]
+    else:
+        unit_price = rate_price2order[coin]  # 获取当前币种的单位价格比重
+    price = exchange.get_price_now()  # 假设有一个方法获取当前市场价格
+    base_order_money = price * unit_price
+    order_amount = int(usdt_amount * 100 / base_order_money)
+    # print(base_order_money, order_amount)
+    if order_amount == 0:
+        print('煞笔，开不了这么小的订单')
+        return
+    size1 = order_amount // 100
+    size2 = (order_amount - size1 * 100 ) // 10
+    size3 = (order_amount - size1 * 100  - size2 *10)
+    if direction.lower() == 'buy':
+        if size1 > 0 : exchange.buy(price, round(size1,2), 'MARKET')
+        if size2 > 0 : exchange.buy(price, round(size2 * 0.1, 2), 'MARKET')
+        if size3 > 0 : exchange.buy(price, round(size3 * 0.01, 2), 'MARKET')
+        print(f"Placed additional buy order for {size1} + {size2} + {size3} units of {coin} at market price {price}")
+    elif direction.lower() == 'sell':
+        if size1 > 0 : exchange.sell(price, round(size1, 2), 'MARKET')
+        if size2 > 0 : exchange.sell(price, round(size2 * 0.1, 2), 'MARKET')
+        if size3 > 0 : exchange.sell(price, round(size3 * 0.01, 2), 'MARKET')
+        print(f"Placed additional sell order for {size1} + {size2} + {size3}  units of 【{coin.upper()}】 at market price {price}")
+    remaining_usdt = usdt_amount - (base_order_money * size1 + 0.1 * base_order_money * size2 + 0.01 *  base_order_money * size3 )
+    # 任何剩余的资金如果无法形成更多订单，结束流程
+    if remaining_usdt > 0:
+        print(f"Remaining USDT {remaining_usdt} insufficient for further orders under the smallest unit constraint.")
+
+
+def set_coin_position_to_target(usdt_amounts = [10], symbols = ['eth']):
+    for coin, usdt_amount in zip(symbols, usdt_amounts):
+        try:
+            exchange = get_okexExchage(coin)
+            position_info = engine.fetch_position(f'{coin.upper()}-USDT-SWAP', show=False)
+            if position_info:
+                avg_px = float(position_info['开仓平均价'])
+                liq_px = float(position_info['预估强平价'])
+                mark_px = float(position_info['最新标记价格'])
+                pos_qty = float(position_info['持仓数量'])
+                pos_side = position_info['持仓方向']
+                profile_now = float(position_info['未实现收益'])
+                unit_price = rate_price2order[coin]  # 获取当前币种的单位价格比重
+                base_order_money = unit_price * mark_px
+                open_position = pos_qty * base_order_money
+                position_info['每张价值'] = base_order_money
+                position_info['本次开仓价值'] = open_position
+                diff = open_position - usdt_amount
+                print(diff)
+                if diff > 0:
+                    order_price = mark_px * 1.0001
+                    place_incremental_orders(abs(diff), coin, 'sell')
+                else:
+                    order_price = mark_px * 0.9999
+                    place_incremental_orders(abs(diff), coin, 'buy')
+        except Exception as e:
+            if usdt_amount > 0:
+                order_price = mark_px * 1.0001
+                place_incremental_orders(abs(usdt_amount), coin, 'sell')
+            else:
+                order_price = mark_px * 0.9999
+                place_incremental_orders(abs(usdt_amount), coin, 'buy')
+            print(coin, e)
+            continue
+            
+def define_self_operate():
+    good_top10_coins = ['btc','bnb', 'trx', 'ton', 'eth', 'shib']
+    for coin in good_top10_coins:
+        if coin=='btc':
+            pass
+        else:
+            place_incremental_orders(100, coin, 'sell')
+    bad_top10_coins = ['btc', 'gala', 'sui', 'hbar', 'om', 'ada']
+    for i in bad_top10_coins:
+        if coin=='btc':
+            pass
+        else:
+            place_incremental_orders(100, coin, 'buy')
+
+
+def cal_amount(coin, amount, coins):
+    if len(coins) == 1:
+        return amount
+    if coin == 'btc':
+        return amount * 0.75
+    else:
+        return amount * 0.25 / (len(coins) - 1)
+
+def minize_money_to_buy():
+    for coin in rate_price2order.keys():
+        x = get_okexExchage(coin)
+        for amount in [0.01, 0.05, 0.1, 0.5, 1]:
+            now_prince = x.get_price_now()
+            success, _ = x.buy(now_prince * 0.98, amount)
+            time.sleep(0.1)
+            if success:
+                print(f'【 {coin} 】这个币，最小的买入单位是：{amount}, 需要花费 {amount * now_prince * rate_price2order[coin]} ')
+                break
+
+
+
 if __name__ == '__main__':
     # Example usage
     engine = OkexExecutionEngine()
     engine.okex_spot.symbol = 'ETH-USDT-SWAP'
     # Example to fetch balance
-    balance = engine.fetch_balance('BTC')
-    print(f"Balance for BTC: {balance}")
+    # balance = engine.fetch_balance('BTC')
+    # print(f"Balance for BTC: {balance}")
 
     # Example to place an order
     # order_response = engine.place_order('ETH-USD-SWAP', 'buy', '3000', '0.01')
     # print(f"Order Response: {order_response}")
-
-    for i in range(1000):
-        time.sleep(3)
-        engine.fetch_balance('USDT')
-        # s
-
+    
     # from ExecutionEngine import *
     # engine = OkexExecutionEngine()
     # engine.fetch_balance('ETH')
-    # engine.fetch_position()
+    # now_money = float(engine.fetch_balance('USDT')['total_equity_usd'])
 
+    just_kill_position = False
+    reset_start_money = 748
+    win_times = 0
+    good_group = ['btc']
+    stop_rate = 1.025
+    add_position_rate = 0.975
+    is_win = True
+    leverage_times = 1.5
+    print('来咯来咯！开始赚钱咯！')
+    while True:
+        stop_rate = 1.025
+        add_position_rate = 0.988
+        try:
+            if just_kill_position:
+                start_money = reset_start_money
+            elif is_win:
+                start_money = float(engine.fetch_balance('USDT')['total_equity_usd'])   ##  * (1 - win_times * 1.88/100)                
+                # worst_performance_coins, best_performance_coins = get_good_bad_coin_group(5)
+            else:
+                start_money = float(engine.fetch_balance('USDT')['total_equity_usd'])
+                # worst_performance_coins, best_performance_coins = get_good_bad_coin_group(5)
+            start_time = time.time()
+            init_operate_position = start_money * leverage_times
+            target_money = start_money
+            if (not just_kill_position) and is_win:
+                usdt_amounts = []
+                coins_to_deal = []
+                for coin in rate_price2order.keys():
+                    time.sleep(0.1)
+                    if coin in good_group:
+                        buy_amount = cal_amount(coin, init_operate_position, good_group)
+                        usdt_amounts.append(buy_amount)
+                        coins_to_deal.append(coin)
+                    else:
+                        sell_amount = init_operate_position / (len(rate_price2order) - len(good_group))
+                        usdt_amounts.append(-sell_amount)
+                        coins_to_deal.append(coin)
+                        # if coin in worst_performance_coins:
+                        #     place_incremental_orders((init_operate_position / (len(rate_price2order) - len(good_group))), coin, 'sell')
+                        # elif coin in best_performance_coins:
+                        #     place_incremental_orders(round(init_operate_position / (len(rate_price2order) - len(good_group))), coin, 'sell')
+                        # elif coin not in best_performance_coins and coin not in worst_performance_coins:
+                        #     place_incremental_orders(round( init_operate_position / (len(rate_price2order) - len(good_group))), coin, 'sell')
+                set_coin_position_to_target(usdt_amounts, coins_to_deal)
+                is_win = False
+            count = 0
+            while True:
+                try:
+                    time.sleep(3)
+                    now_money = float(engine.fetch_balance('USDT')['total_equity_usd'])
+                    if count > 0 and count % 300 == 0 and not just_kill_position:
+                        if now_money < target_money * add_position_rate and now_money > start_money * 0.6:
+                            for coin in rate_price2order.keys():
+                                time.sleep(0.1)
+                                if coin in good_group:
+                                    buy_amount = cal_amount(coin, 300, good_group)
+                                    place_incremental_orders(buy_amount, coin, 'buy')
+                                else:
+                                    if coin in worst_performance_coins:
+                                        place_incremental_orders(round(300 / (len(rate_price2order) - len(good_group))), coin, 'sell')
+                                    elif coin in best_performance_coins:
+                                        place_incremental_orders(round(300 / (len(rate_price2order) - len(good_group))), coin, 'sell')
+                                    elif coin not in best_performance_coins and coin not in worst_performance_coins:
+                                        place_incremental_orders(round(300 / (len(rate_price2order) - len(good_group))), coin, 'sell')
+                            target_money = target_money * add_position_rate
+                            stop_rate += 0.0025
+                            add_position_rate -= 0.005
+                    count += 5
+                    if now_money > start_money * stop_rate:
+                        is_win = True
+                        win_times += 1
+                        just_kill_position = False
+                        break
+                    else:
+                        low_target = target_money * add_position_rate
+                        low1 = now_money if now_money < start_money else start_money
+                        high1 = now_money if now_money >= start_money else start_money
+                        high_target = start_money*stop_rate
+                        step_unit = (high_target - low_target) / 80
+                        if now_money < start_money: 
+                            icon = '='
+                        else:
+                            icon = '>'
+                        print(f"\r[{round(low_target,1)} | {'=' * round((low1 - low_target) // step_unit)} {round(low1, 1)} | {icon * round((high1 - low1) // step_unit)} {round(high1, 1)} | {'=' * round((high_target - high1) // step_unit)} {round(start_money*stop_rate, 1)} 【Time Usgae: {round(time.time() - start_time)}】", end='')
+                except Exception as e:
+                    print('aha? 垃圾api啊\n', e)
+        except Exception as e:
+            print(e)
+            time.sleep(1800)
+        for i in range(1800):
+            time.sleep(1)
+            print(f'\r 刚搞完一单，休息会，{i}/1800', end='')

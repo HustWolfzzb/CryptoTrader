@@ -216,11 +216,11 @@ class OkexSpot:
             quantity = quantity
         if self.symbol == 'ETH-BTC':
             data['ccy'] = 'ETH'
-        if order_type == "POST_ONLY":
+        if order_type.upper() == "POST_ONLY":
             data["ordType"] = "post_only"
             data["px"] = price
             data["sz"] = quantity
-        elif order_type == "MARKET":
+        elif order_type.upper() == "MARKET":
             data["ordType"] = "market"
             data["sz"] = quantity
         else:
@@ -605,9 +605,8 @@ def _grid_Okex(exchanges, init_rate_rates={'eth': {'buy': 1, 'sell': 3, 'price_b
                         BeijingTime('%Y-%m-%dT%H:%M:%S'),
                         round(price_now, init_rr['price_bit']),
                         sell_amount, price_now, round(sell_price * sell_amount, 2), x))
-
             except Exception as e:
-                print(e)
+                print('循环过程中的错误', e)
                 break
 
 
@@ -869,10 +868,13 @@ def grid_heyue(exchanges, _rates=None):
         # 如果API返回的代码不是'0'，记录错误消息
         if response['code'] == '0' and response['data']:  # 确保响应代码为'0'且有数据
             data = response['data'][0]
-            if float(data['avgPx']):
-                _rates[symbol]['change_base'] = float(data['avgPx'])
-                print('开仓均价为： {} '.format(_rates[symbol]['change_base']))
-                update_rates(_rates)
+            try:
+                if float(data['avgPx']):
+                    _rates[symbol]['change_base'] = float(data['avgPx'])
+                    print('开仓均价为： {} '.format(_rates[symbol]['change_base']))
+                    update_rates(_rates)
+            except Exception as e:
+                print(f'{symbol} 无法得到仓位数据，只能使用默认数据了') 
         else:
             print('开仓均价为默认： {} '.format(_rates[symbol]['change_base']))
 
@@ -916,9 +918,12 @@ def grid_heyue(exchanges, _rates=None):
             # 如果API返回的代码不是'0'，记录错误消息
             if response['code'] == '0' and response['data']:  # 确保响应代码为'0'且有数据
                 data = response['data'][0]
-                if float(data['avgPx']):
-                    _rates[symbol]['change_base'] = float(data['avgPx'])
-                update_rates(_rates)
+                try:
+                    if float(data['avgPx']):
+                        _rates[symbol]['change_base'] = float(data['avgPx'])
+                    update_rates(_rates)
+                except Exception as e:
+                    pass
         for exchange in exchanges:
             symbol = exchange.symbol
             # init_price = init_prices[symbosl]
@@ -953,7 +958,7 @@ def grid_heyue(exchanges, _rates=None):
                         buy_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * int(abs(_rates[symbol]['change_base'] - buy_price) // _rates[symbol]['change_gap'])
                         #print("local - 2")
                         buy_order, _ = exchange.buy(round(buy_price, _rates[symbol]['price_bit']), buy_amount, order_type='limit', tdMode='cross')
-                        print((round(buy_price, _rates[symbol]['price_bit']), buy_amount))
+                        print('新开买单：', (round(buy_price, _rates[symbol]['price_bit']), buy_amount))
                         if not buy_order:
                             buy_order, _ = exchange.buy(round(buy_price, _rates[symbol]['price_bit']), buy_amount,
                                                         order_type='limit', tdMode='cross')
@@ -987,6 +992,7 @@ def grid_heyue(exchanges, _rates=None):
                                        _rates[symbol]['price_bit'])
                     sell_amount = _rates[symbol]['amount_base'] +  _rates[symbol]['change_amount'] * int(abs(_rates[symbol]['change_base'] - sell_price) // _rates[symbol]['change_gap'])
                     sell_order, _ = exchange.sell(round(sell_price, _rates[symbol]['price_bit']), sell_amount, order_type='limit', tdMode='cross')
+                    print('新开卖单：', (round(sell_price, _rates[symbol]['price_bit']), sell_amount))
                     if not sell_order:
                         print(sell_price, sell_amount)
                         break
@@ -1197,40 +1203,25 @@ def grid_eth(exchanges, _rates=None):
 
 
 
-def get_okexExchage(name='eth'):
-    if name == 'eth':
-        exchange1 = OkexSpot(
-#            symbol="ETH-USDT",
-            symbol="ETH-USDT-SWAP",
-            access_key=ACCESS_KEY,
-            secret_key=SECRET_KEY,
-            passphrase=PASSPHRASE,
-            host=None
-        )
-    elif name == 'btc':
-        exchange1 = OkexSpot(
-            symbol="BTC-USDT-SWAP",
-            access_key=ACCESS_KEY,
-            secret_key=SECRET_KEY,
-            passphrase=PASSPHRASE,
-            host=None
-        )
-    elif name == 'eb':
-        exchange1 = OkexSpot(
-            symbol="ETH-BTC",
-            access_key=ACCESS_KEY,
-            secret_key=SECRET_KEY,
-            passphrase=PASSPHRASE,
-            host=None
-        )
+def get_okexExchage(name='eth', account=0):
+    if account == 1 and os.path.exists('../sub_config'):
+        with open('../sub_config', 'r') as f:
+            data = f.readlines()
+            ak  = data[0].strip()
+            sk  = data[1].strip()
+            ph  = data[2].strip()
     else:
-        exchange1 = OkexSpot(
-            symbol="{}-USDT-SWAP".format(name.upper()),
-            access_key=ACCESS_KEY,
-            secret_key=SECRET_KEY,
-            passphrase=PASSPHRASE,
-            host=None
-        )
+        ak  = ACCESS_KEY
+        sk  = SECRET_KEY
+        ph  = PASSPHRASE
+
+    exchange1 = OkexSpot(
+        symbol="{}-USDT-SWAP".format(name.upper()),
+        access_key=ak,
+        secret_key=sk,
+        passphrase=ph,
+        host=None
+    )
     return exchange1
 
 def beautify_order_output(orders):
@@ -1303,10 +1294,16 @@ def pin_capture_trading(e2, interval=0.5, range_start=2, range_end=10, amount=1)
 
 if __name__ == '__main__':
     exchanges ,_rates = get_rates()
-    # print(_rates)
+    print(_rates)
     while True:
         try:
             grid_heyue(exchanges, _rates)
         except Exception as e:
             print(e)
             time.sleep(10)
+
+
+    # print(_rates)
+    # while True:
+    #   grid_heyue(exchanges, _rates)
+    

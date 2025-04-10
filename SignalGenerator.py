@@ -1,3 +1,4 @@
+from Config import ACCESS_KEY, SECRET_KEY, PASSPHRASE, HOST_IP, HOST_USER, HOST_PASSWD, HOST_IP_1
 import pandas as pd
 from DataHandler import DataHandler, format_decimal_places, convert_columns_to_numeric
 from IndicatorCalculator import IndicatorCalculator
@@ -572,7 +573,7 @@ class SignalGenerator:
 
 
 if __name__ == '__main__':
-    data_handler = DataHandler('66.187.4.10', 'TradingData', 'root', 'zzb162122')
+    data_handler = DataHandler(HOST_IP, 'TradingData', HOST_USER, 'zzb162122')
     indicator_calculator = IndicatorCalculator(data_handler)
     signal_generator = SignalGenerator(indicator_calculator)
 
