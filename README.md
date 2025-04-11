@@ -4,32 +4,32 @@
 - **产品ID**: TRX-USDT-SWAP
   - **持仓数量**: -0.26
   - **开仓平均价**: 0.2295278542510124
-  - **强平价格**: 2.9913179621275794
-  - **最新价格**: 0.23608
+  - **强平价格**: 2.992030893779095
+  - **最新价格**: 0.23587
 
 - **产品ID**: DOGE-USDT-SWAP
   - **持仓数量**: -0.41
   - **开仓平均价**: 0.1475532087299747
-  - **强平价格**: 1.9036685283484942
-  - **最新价格**: 0.15644
+  - **强平价格**: 1.9045687380391958
+  - **最新价格**: 0.15673
 
 - **产品ID**: XRP-USDT-SWAP
   - **持仓数量**: -0.32
   - **开仓平均价**: 1.8752151912540585
-  - **强平价格**: 24.385669250224765
-  - **最新价格**: 1.9998
+  - **强平价格**: 24.399966650299238
+  - **最新价格**: 2.0061
 
 - **产品ID**: ETH-USDT-SWAP
   - **持仓数量**: -0.42
   - **开仓平均价**: 1561.3446432978022693
-  - **强平价格**: 18642.188793387908
-  - **最新价格**: 1543.5
+  - **强平价格**: 18654.637534884514
+  - **最新价格**: 1550.24
 
 - **产品ID**: BTC-USDT-SWAP
   - **持仓数量**: 1.77
   - **开仓平均价**: 79566.5043748464853477
-  - **强平价格**: 39825.93789457971
-  - **最新价格**: 80771.9
+  - **强平价格**: 39985.47803141013
+  - **最新价格**: 80936.8
 
 
 
@@ -184,6 +184,9 @@ To securely interact with cryptocurrency exchanges, you will need to generate ac
 
 4. **Note Down the API Key and Secret**:
    - Once the API key is generated, ensure you copy and store both the API Key and the Secret Key securely. **Do not share these keys with anyone.**
+
+5. **Put API Keys in File Out of Master Dir**:
+   - Configure the file as the requirements as shown in Config.py
 
 ### Binding IP Address (If Applicable)
 
