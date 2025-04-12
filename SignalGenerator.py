@@ -1,6 +1,7 @@
 from Config import ACCESS_KEY, SECRET_KEY, PASSPHRASE, HOST_IP, HOST_USER, HOST_PASSWD, HOST_IP_1
 import pandas as pd
-from DataHandler import DataHandler, format_decimal_places, convert_columns_to_numeric
+from util import format_decimal_places, convert_columns_to_numeric
+from DataHandler import DataHandler,
 from IndicatorCalculator import IndicatorCalculator
 import numpy as np
 import time

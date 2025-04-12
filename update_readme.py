@@ -36,16 +36,6 @@ rate_file_path = '../trade_runtime_files/_rates.txt'
 balance_file_path = '../trade_runtime_files/total_balance.json'
 markdown_file_path = 'README.md'
 
-# 定义获取持仓信息的函数
-def fetch_position(product_id):
-    print(product_id)
-    position_data = engine.fetch_position(product_id)
-    return position_data
-
-# 定义获取资产总额的函数
-def fetch_balance():
-    balance_data = engine.fetch_balance('USDT')
-    return balance_data
 
 # 定义 SCP 传输命令执行函数
 def scp_transfer(file):
@@ -70,7 +60,7 @@ def read_rates():
 
 # 获取资产总额并保存
 def log_asset():
-    balance = fetch_balance()
+    balance = engine.fetch_balance('USDT')()
     total_equity_usd = balance['total_equity_usd']
     
     # 保存到文件
@@ -171,7 +161,7 @@ def format_positions(rates):
     positions_list = "## 持仓信息\n"
     
     for product_id, data in rates.items():
-        position = fetch_position(product_id)  # 获取持仓信息
+        position = engine.fetch_position(product_id) # 获取持仓信息
         positions_list += f"- **产品ID**: {product_id}\n"
         positions_list += f"  - **持仓数量**: {position['持仓数量']}\n"
         positions_list += f"  - **开仓平均价**: {position['开仓平均价']}\n"

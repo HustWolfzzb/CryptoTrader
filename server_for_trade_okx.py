@@ -121,6 +121,7 @@ def track_balance():
     while True:
         balance1 = engine1.fetch_balance('USDT')['total_equity_usd']
         balance2 = engine2.fetch_balance('USDT')['total_equity_usd']
+        # balance_data.append(float(balance1))
         balance_data.append([float(balance1), float(balance2)])
         time.sleep(10)  # Delay for 10 seconds
 

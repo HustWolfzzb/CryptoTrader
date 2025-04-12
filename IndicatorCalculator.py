@@ -1,6 +1,5 @@
 from Config import ACCESS_KEY, SECRET_KEY, PASSPHRASE, HOST_IP, HOST_USER, HOST_PASSWD, HOST_IP_1
 from DataHandler import DataHandler
-import numpy as np
 
 class IndicatorCalculator:
     def __init__(self, data_handler):

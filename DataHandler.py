@@ -6,7 +6,6 @@ import pandas as pd
 import os
 from tqdm import tqdm
 
-
 # 兼容不同列名的字典映射
 COLUMN_MAPPING = {
     'trade_date': 'trade_date',
@@ -18,39 +17,6 @@ COLUMN_MAPPING = {
     'vol': 'vol',
 }
 
-
-def format_decimal_places(df, decimal_places=1):
-    # Apply formatting to each floating-point column
-    for col in df.select_dtypes(include=['float64', 'float32']).columns:
-        df[col] = df[col].map(lambda x: f"{x:.{decimal_places}f}")
-    return df
-
-
-def convert_columns_to_numeric(df, columns=None):
-    """
-    Convert specified columns to numeric, or automatically detect and convert
-    all columns that can be converted to numeric types.
-
-    Parameters:
-        df (DataFrame): The DataFrame to process.
-        columns (list, optional): Specific list of columns to convert. If None,
-                                  attempts to convert all columns.
-
-    Returns:
-        DataFrame: A DataFrame with converted columns.
-    """
-    if columns is None:
-        # Attempt to convert all columns that can be interpreted as numeric
-        for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    else:
-        # Only convert specified columns
-        for col in columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            else:
-                print(f"Warning: Column '{col}' not found in DataFrame")
-    return df
 
 
 class DataHandler:
