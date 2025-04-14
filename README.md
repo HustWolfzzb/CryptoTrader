@@ -355,3 +355,4 @@ Contributions to CryptoTrader are welcome! Please read through our contributing 
 ## License
 
 Distributed under the MIT License. See LICENSE for more information.
+.
