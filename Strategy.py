@@ -450,14 +450,23 @@ def grid_heyue(account=1, coins=None, _rates=None):
             time_now = time.time()
             print('\r%s [TIME:%s]'%('\t'.join(process_bar), round(time_now - start)), end='')
 
+def print_options():
+    print("\n✨ 可选策略如下：")
+    print("  1. btc   —— BTC多，其他空对冲，示例：btc 1000 1.5 eth,xrp   | 最后一个参数可以不输入，默认会做空23种其他币")
+    print("  2. fib   —— Fibonacci 策略，示例：fib 500 10 eth  | 这个策略有点风险不可控，后期优化，推荐第一个")
+    print("  3. boll  —— 布林带穿越策略，示例：boll 300  | 先别跑，这个是我后期准备修改的")
+    print("  4. grid  —— 网格合约策略，示例：grid 1000 0 eth,xrp | 网格策略，蛮不错的，建议可以直接python okex.py平替，这个我没正式跑，okex.py跑好几年了\n")
+
+
 
 if __name__ == '__main__':
     print(sys.argv)
     if len(sys.argv) == 1:
-        method_choosen = 0
-        account = 0
-        arg3 = 0
-        coin = ''
+        print_options()
+        method_choosen = input("📌 请选择一个策略名（btc/fib/boll/grid）默认btc: ").strip() or 'btc'
+        account = int(input("💰 请输入账户选择（默认0为主账户，其他为子账户）: ").strip() or 0)
+        arg3 = input("📊 请输入第三个参数（如杠杆倍数/网格数）: ").strip() or 0
+        coin = input("🪙 输入涉及币种，用英文逗号分隔（如eth,xrp）: ").strip() or ''
     else:
         method_choosen = sys.argv[1]
         account = int(sys.argv[2] if sys.argv[2] else 0)
@@ -482,4 +491,6 @@ if __name__ == '__main__':
         else:
             coins = None
         grid_heyue(account=account, coins=coins, _rates=get_rates())
-
+    else:
+        print(f"❌ 未识别的策略名：{method_choosen}")
+        print_options()

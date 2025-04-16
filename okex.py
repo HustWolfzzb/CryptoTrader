@@ -177,8 +177,7 @@ class OkexSpot:
         # print(result)
         if result[0]['code'] == '0':  # 假设'0'是成功的响应代码
             data = result[0]['data'][0]
-            
-            return float(data["details"][0]['availBal'])
+            return float(data['availBal'])
         else:
             print(result[0]['msg'])
             return None
@@ -194,27 +193,6 @@ class OkexSpot:
         )
         return result
 
-    def fetch_balance(self, currency='USDT'):
-        """
-        获取并记录给定货币的余额。
-        """
-        try:
-            response = self.get_asset(currency)[0]
-            if response['code'] == '0':  # 假设'0'是成功的响应代码
-                data = response['data'][0]
-                for i in range(len(currency.split(','))):
-                    available_balance = data['details'][i]['availBal']
-                    equity = data['details'][i]['eq']
-                    frozenBal = data['details'][i]['frozenBal']
-                    notionalLever = data['details'][i]['notionalLever']
-                    total_equity = data['totalEq']
-                    usd_equity = data['details'][i]['eqUsd']
-                    return  float(usd_equity)
-            else:
-                # 如果API返回的代码不是'0'，记录错误消息
-                return None
-        except Exception as e:
-            return None
 
     def get_posistion(self):
         params = {"instId": self.symbol}
@@ -347,6 +325,30 @@ class OkexSpot:
             return None, f"划转失败: {error}"
         else:
             return resp, None
+
+    def fetch_balance(self, currency='USDT', show=False):
+        """
+        获取并记录给定货币的余额。
+        """
+        try:
+            response = self.get_asset(currency)[0]
+            if response['code'] == '0':  # 假设'0'是成功的响应代码
+                data = response['data'][0]
+                for i in range(len(currency.split(','))):
+                    available_balance = data['details'][i]['availBal']
+                    equity = data['details'][i]['eq']
+                    frozenBal = data['details'][i]['frozenBal']
+                    notionalLever = data['details'][i]['notionalLever']
+                    total_equity = data['totalEq']
+                    usd_equity = data['details'][i]['eqUsd']
+
+                    return float(usd_equity)
+            else:
+                # 如果API返回的代码不是'0'，记录错误消息
+                return None
+        except Exception as e:
+            # 捕捉并记录任何其他异常
+            return None
 
     def revoke_orders(self, order_nos):
         """
@@ -1180,7 +1182,7 @@ def grid_eth(exchanges, _rates=None):
 
 
 
-def get_okexExchage(name='eth', account=1):
+def get_okexExchage(name='eth', account=0):
     if account == 1 and os.path.exists('../sub_config'):
         with open('../sub_config', 'r') as f:
             data = f.readlines()
