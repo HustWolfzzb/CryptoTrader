@@ -2,69 +2,21 @@ from Config import ACCESS_KEY, SECRET_KEY, PASSPHRASE, HOST_IP, HOST_USER, HOST_
 import os
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.model_selection import train_test_split
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Input, Dense, Flatten, BatchNormalization, Dropout, Activation, LSTM
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint
-from tensorflow.keras.initializers import HeNormal
-from tensorflow.keras.regularizers import l2
-from DataHandler import DataHandler
-from DataHandler import DataHandler
 from tqdm import tqdm
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from DataHandler import DataHandler
+from Config import HOST_IP, HOST_USER, HOST_PASSWD
+import multiprocessing as mp
 import subprocess
 import platform
-import tensorflow as tf
 
-
-def get_idle_gpu():
-    """
-    使用 nvidia-smi 获取相对空闲的 GPU ID
-    返回最空闲的 GPU 的索引
-    """
-    try:
-        # 调用 nvidia-smi 命令，获取 GPU 使用率
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        # 获取每个 GPU 的利用率
-        gpu_utilizations = result.stdout.strip().split('\n')
-        gpu_utilizations = [int(util) for util in gpu_utilizations]
-
-        # 返回利用率最低的 GPU 的索引
-        idle_gpu_index = gpu_utilizations.index(min(gpu_utilizations))
-        print(f"Idle GPU selected: {idle_gpu_index}, Utilization: {gpu_utilizations[idle_gpu_index]}%")
-        return idle_gpu_index
-    except Exception as e:
-        print(f"Error while fetching GPU utilization: {e}")
-        return 0  # 默认返回第一个 GPU
-
-
-# 获取物理 GPU
-gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    try:
-        # 获取空闲 GPU 的索引
-        idle_gpu_index = get_idle_gpu()
-
-        # 设置 TensorFlow 使用空闲 GPU
-        tf.config.experimental.set_visible_devices(gpus[idle_gpu_index], 'GPU')
-        tf.config.experimental.set_memory_growth(gpus[idle_gpu_index], True)
-        print(f"Using GPU: {idle_gpu_index}")
-    except RuntimeError as e:
-        # 当设置 GPU 时必须在程序启动时进行
-        print(f"RuntimeError: {e}")
-else:
-    print("No GPUs found!")
 FEATURES = ['ma7', 'ma14', 'ma28',
             'bollinger_upper', 'bollinger_middle', 'bollinger_lower']
             # 'open',
@@ -138,12 +90,36 @@ def get_trend_class(category):
         return 1  # 上涨区间
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 class StockPricePredictor:
-    def __init__(self, df, window_size = 30):
+    def __init__(self, df, window_size=30, batch_size=512, lr=0.0015, epochs=50, device=device):
+        """
+        初始化预测器。
+        :param model: PyTorch模型实例 (可自定义)
+        :param window_size: 数据窗口大小
+        :param batch_size: 批处理大小
+        :param lr: 学习率
+        :param epochs: 训练轮数
+        :param device: 设备(CPU或GPU)
+        """
         self.df = df
         self.window_size = window_size
+        self.batch_size = batch_size
+        self.lr = lr
+        self.epochs = epochs
+        self.device = device
         self.features = FEATURES + VOL_FEATURE
-        self.model, self.lr_scheduler = self.build_model()
+        # X, y = self.prepare_data()
+        X, y = self.load_or_process_data(start_date, end_date)
+        self.setup_dataloaders(X, y)
+        self.build_model(window_size * len(self.features), 6)
+        self.model.to(device)
+
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+
         print('__init__ StockPricePredictor success~~~')
 
     def add_features(self):
@@ -210,6 +186,76 @@ class StockPricePredictor:
             X, y = self.prepare_data()  # 确保这个函数可以返回 X, y
             return X, y
 
+    def setup_dataloaders(self, X, y):
+        X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.2, random_state=42)
+        X_valid, X_test, y_valid, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
+        self.train_loader = self.get_loader(X_train, y_train)
+        self.valid_loader = self.get_loader(X_valid, y_valid)
+        self.test_loader = self.get_loader(X_test, y_test)
+
+
+    def get_loader(self, X, y):
+        tensor_x = torch.Tensor(X).to(self.device)
+        tensor_y = torch.LongTensor(y).to(self.device)
+        dataset = TensorDataset(tensor_x, tensor_y)
+        return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+    # 定义独立的处理函数供进程调用
+    def process_chunk(self, args):
+        df_chunk, window_size, FEATURES = args
+        X_chunk, y_chunk = [], []
+        for i in range(window_size, len(df_chunk) - 1):
+            window = df_chunk.iloc[i - window_size:i]
+            try:
+                x_price = (((window[FEATURES].T - window['close']) / window['close']).T - 1).values * 100
+                x_vol = window[['vol7_change', 'vol14_change', 'vol28_change']].values
+                x = np.concatenate([x_price, x_vol], axis=1)
+                X_chunk.append(x)
+                price_change_percent = (df_chunk.iloc[i + 1]['close'] / df_chunk.iloc[i]['close'] - 1) * 100
+                y_chunk.append(transform_to_class(price_change_percent))
+            except Exception as e:
+                print(f"Chunk Error at index {i}: {e}")
+        return X_chunk, y_chunk
+
+
+    # def prepare_data(self, num_workers=56):
+    #     # 检查和处理NaN值
+    #     self.df.ffill(inplace=True)
+    #     self.df.bfill(inplace=True)
+    #     self.add_features()
+    #
+    #     self.df['close'] = self.df['close'].astype(float)
+    #     self.df[self.features] = self.df[self.features].astype(float)
+    #
+    #     total_length = len(self.df)
+    #     indices = np.array_split(range(self.window_size, total_length - 1), num_workers)
+    #
+    #     # 为每个进程准备数据子集 (稍微扩大范围防止窗口丢失)
+    #     chunks = []
+    #     for idx in indices:
+    #         start = max(0, idx[0] - self.window_size)
+    #         end = min(total_length, idx[-1] + 2)
+    #         chunks.append(self.df.iloc[start:end].reset_index(drop=True))
+    #
+    #     # 多进程执行
+    #     with mp.Pool(processes=num_workers) as pool:
+    #         results = list(tqdm(pool.imap(self.process_chunk, [(chunk, self.window_size, FEATURES) for chunk in chunks]), total=num_workers, desc="并行数据处理"))
+    #
+    #     # 汇总各进程处理后的数据
+    #     X, y = [], []
+    #     for X_chunk, y_chunk in results:
+    #         X.extend(X_chunk)
+    #         y.extend(y_chunk)
+    #
+    #     print(f"Total samples: {len(X)}, Total labels: {len(y)}")
+    #
+    #     X = np.array(X)
+    #     y = np.array(y)
+    #
+    #     # 数据导出 (请定义 start_date, end_date)
+    #     self.export_data(X, y, start_date, end_date)
+    #
+    #     return X, y
 
     def prepare_data(self):
         # 检查和处理NaN值
@@ -226,7 +272,7 @@ class StockPricePredictor:
             window = self.df.iloc[i - self.window_size:i]
             try:
                 # 基本特征值归一化
-                x_price = ((window[FEATURES].T / window['close']).T - 1).values * 100
+                x_price = (((window[FEATURES].T  - window['close']) / window['close']).T - 1).values * 100
                 x_vol = window[['vol7_change', 'vol14_change', 'vol28_change']].values
                 x = np.concatenate([x_price, x_vol], axis=1)
                 X.append(x)
@@ -240,115 +286,94 @@ class StockPricePredictor:
         y = np.array(y[self.window_size:])
         self.export_data(X, y, start_date, end_date)
         # self.plot_first_element(X, y)
-        return X, y
+        return np.array(X), np.array(y)
 
-    def build_model(self, num_classes=6):
-        model = Sequential([
-            Flatten(input_shape=(self.window_size, len(self.features))),  # 输入层：将输入平坦化
+    def build_model(self, input_shape, num_classes=6):
+        self.model = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(input_shape, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.BatchNorm1d(256),
+            nn.Dropout(0.3),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.BatchNorm1d(64),
+            nn.Dropout(0.2),
+            nn.Linear(64, num_classes)
+        )
 
-            Dense(512, activation='relu'),  # 第一层：128个神经元
-            # BatchNormalization(),  # 批量标准化层
-            Dropout(0.3),  # Dropout层
+    def forward(self, x):
+        return self.net(x)
 
-            Dense(256, activation='relu'),  # 第二层：再次使用128个神经元
-            BatchNormalization(),
-            Dropout(0.3),
 
-            Dense(128, activation='relu'),  # 第三层：64个神经元
-            # BatchNormalization(),
-            Dropout(0.3),
+    def train(self):
+        train_losses, val_losses = [], []
+        for epoch in range(self.epochs):
+            self.model.train()
+            total_loss = 0
+            for X_batch, y_batch in self.train_loader:
+                self.optimizer.zero_grad()
+                outputs = self.model(X_batch)
+                loss = self.criterion(outputs, y_batch)
+                loss.backward()
+                self.optimizer.step()
+                total_loss += loss.item()
+            avg_train_loss = total_loss / len(self.train_loader)
+            train_losses.append(avg_train_loss)
 
-            Dense(64, activation='relu'),  # 第四层：32个神经元
-            BatchNormalization(),
-            Dropout(0.2),
+            # 验证阶段
+            self.model.eval()
+            val_loss = 0
+            with torch.no_grad():
+                for X_batch, y_batch in self.valid_loader:
+                    outputs = self.model(X_batch)
+                    loss = self.criterion(outputs, y_batch)
+                    val_loss += loss.item()
+            avg_val_loss = val_loss / len(self.valid_loader)
+            val_losses.append(avg_val_loss)
 
-            Dense(num_classes, activation='softmax')  # 输出层：6个分类，使用softmax激活函数
-        ])
+            print(f"Epoch [{epoch+1}/{self.epochs}] - Train Loss: {avg_train_loss:.4f}, Valid Loss: {avg_val_loss:.4f}")
 
-        # 配置优化器和学习率调度器
-        optimizer = Adam(learning_rate=lr, clipnorm=1.0)
-        lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=0.000001)
+        self.plot_losses(train_losses, val_losses)
 
-        model.compile(optimizer=optimizer,
-                      loss='sparse_categorical_crossentropy',
-                      metrics=['accuracy'])
+    def evaluate(self):
+        self.model.eval()
+        correct, total = 0, 0
+        with torch.no_grad():
+            for X_batch, y_batch in self.test_loader:
+                outputs = self.model(X_batch)
+                _, predicted = torch.max(outputs.data, 1)
+                total += y_batch.size(0)
+                correct += (predicted == y_batch).sum().item()
+        accuracy = correct / total
+        print(f'测试集准确率: {accuracy * 100:.2f}%')
+        return accuracy
 
-        return model, lr_scheduler
-
-    def train_model(self, X_train, y_train, X_test, y_test, X_valid, y_valid, epochs=20, batch_size=512, is_load=False):
-        model_path = f"./dlModels/{start_date}_to_{end_date}_{time_interval}_{'{}_{}'.format(len(FEATURES), len(VOL_FEATURE)) if len(VOL_FEATURE) >0 else len(FEATURES)}_{lr}.keras"
-        if is_load and os.path.exists(model_path):
-            print("Loading existing model...")
-            self.model = load_model(model_path)
-            return self.model
-        else:
-            print("Training new model...")
-            model, lr_scheduler = self.build_model()
-            checkpoint = ModelCheckpoint(model_path, monitor='val_accuracy', save_best_only=True, verbose=1)
-            history = self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_valid, y_valid))
-            # 评估模型
-            loss, acc = self.model.evaluate(X_test, y_test)
-            classification_accuracy, trend_accuracy = self.evaluate_model(X_test, y_test)
-            self.save_model(model_path)
-            print("Test Loss:", loss, ' Acc:', acc, ' classification_accuracy:', classification_accuracy, ' trend_accuracy:', trend_accuracy)
-            # 绘制训练历史
-            self.plot_training_history(history)
-            print("Model training complete.")
-            return self.model
-
-    def evaluate_model(self, X_test, y_test):
-        predictions = self.model.predict(X_test)
-        predicted_classes = np.argmax(predictions, axis=1)
-
-        # 计算分类准确度
-        correct_predictions = np.equal(predicted_classes, y_test)
-        classification_accuracy = np.mean(correct_predictions)
-
-        # 计算涨跌准确度
-        predicted_trends = np.array([get_trend_class(pc) for pc in predicted_classes])
-        actual_trends = np.array([get_trend_class(ac) for ac in y_test])
-        trend_correct_predictions = np.equal(predicted_trends, actual_trends)
-        trend_accuracy = np.mean(trend_correct_predictions)
-
-        print(f"Classification accuracy: {classification_accuracy * 100:.2f}%")
-        print(f"Trend accuracy: {trend_accuracy * 100:.2f}%")
-        return classification_accuracy, trend_accuracy
-
-    def plot_training_history(self, history):
-        """绘制训练和验证的损失及准确率"""
-        fig, ax = plt.subplots(1, 2, figsize=(14, 5))
-
-        # 绘制损失曲线
-        ax[0].plot(history.history['loss'], label='Train Loss')
-        ax[0].plot(history.history['val_loss'], label='Validation Loss')
-        ax[0].set_title('Model Loss')
-        ax[0].set_xlabel('Epochs')
-        ax[0].set_ylabel('Loss')
-        ax[0].legend()
-
-        # 如果存在准确率数据，绘制准确率曲线
-        if 'accuracy' in history.history:
-            ax[1].plot(history.history['accuracy'], label='Train Accuracy')
-            ax[1].plot(history.history['val_accuracy'], label='Validation Accuracy')
-            ax[1].set_title('Model Accuracy')
-            ax[1].set_xlabel('Epochs')
-            ax[1].set_ylabel('Accuracy')
-            ax[1].legend()
-
+    def plot_losses(self, train_losses, val_losses):
+        plt.plot(train_losses, label='Train Loss')
+        plt.plot(val_losses, label='Validation Loss')
+        plt.legend()
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Training and Validation Loss')
         plt.show()
 
-    def predict(self, X):
-        return self.model.predict(X)
+    def save_model(self, dir='dlModels'):
+        model_path = f"./{dir}/{start_date}_to_{end_date}_{time_interval}_{'{}_{}'.format(len(FEATURES), len(VOL_FEATURE)) if len(VOL_FEATURE) >0 else len(FEATURES)}_{lr}.keras"
+        torch.save(self.model.state_dict(), model_path)
+        print(f'模型保存至 {model_path}')
 
-    def save_model(self, path='model.h5'):
-        # 保存模型到 HDF5 文件
-        self.model.save(path)
-        print(f"Model saved to {path}")
+    def load_model(self, path='stock_predictor.pth'):
+        self.model.load_state_dict(torch.load(path, map_location=self.device))
+        self.model.eval()
+        print(f'模型从 {path} 加载成功')
 
-    def load_model(self, path='model.h5'):
-        # 从 HDF5 文件加载模型
-        self.model = load_model(path)
-        print(f"Model loaded from {path}")
 
     def export_data(self, X, y, start_date, end_date, file_prefix='Xy_data'):
         file_x = f"{file_prefix}_{start_date}_to_{end_date}_X_{time_interval}_{'{}_{}'.format(len(FEATURES), len(VOL_FEATURE)) if len(VOL_FEATURE) >0 else len(FEATURES)}.csv"
@@ -403,11 +428,13 @@ if __name__ == '__main__':
     #     data_handler.close()
     # else:
     #     df = None
+    mp.set_start_method('spawn')
+    # 然后执行你的main函数或其他代码
 
     start_date = '2020-08-17'
     end_date = '2024-11-19'
     lr = 0.0015
-    time_interval = '15m'
+    time_interval = '1m'
     if is_ip_reachable(HOST_IP_1):
         data_handler = DataHandler(HOST_IP_1, 'TradingData', 'root', 'zzb162122')
         df = data_handler.fetch_data('BTC-USDT', time_interval, start_date, end_date)
@@ -418,6 +445,6 @@ if __name__ == '__main__':
     # Example usage
     # df is your DataFrame loaded with 'open', 'high', 'low', 'close' and possibly other data
     predictor = StockPricePredictor(df)
-    X, y = predictor.load_or_process_data(start_date, end_date)
-    X_train, X_test, y_train, y_test, X_valid, y_valid = prepare_and_split_data(X, y)
-    predictor.train_model(X_train, y_train, X_test, y_test, X_valid, y_valid, epochs=500)
+    predictor.train()
+    predictor.evaluate()
+    predictor.save_model()

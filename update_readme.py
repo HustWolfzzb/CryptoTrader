@@ -52,15 +52,15 @@ def scp_transfer(file):
 def read_rates():
     with open(rate_file_path, 'r') as file:
         rates = json.load(file)
-    os.system(f'scp root@{HOST_IP_2}:/root/Quantify/okx/_rates.txt ../trade_runtime_files/ ')
-    with open(rate_file_path, 'r') as file:
-        rates.update(json.load(file))
+    # os.system(f'scp root@{HOST_IP_2}:/root/Quantify/okx/_rates.txt ../trade_runtime_files/ ')
+    # with open(rate_file_path, 'r') as file:
+    #     rates.update(json.load(file))
     return rates
 
 
 # 获取资产总额并保存
 def log_asset():
-    balance = engine.fetch_balance('USDT')()
+    balance = engine.fetch_balance('USDT')
     total_equity_usd = balance['total_equity_usd']
     
     # 保存到文件
@@ -131,7 +131,7 @@ def update_readme():
     rates_table = format_rates(rates)
     
     # 生成 Markdown 内容
-    markdown_content = f" # 资产与持仓数据 \n\n------ {positions_table}\n\n------ {rates_table}"
+    markdown_content = f" # 资产与持仓数据 \n\n------ "#{positions_table}\n\n------ "#{rates_table}"
     
     # 将生成的内容输出到一个临时的 Markdown 文件
     temp_file_path = '../trade_runtime_files/temp_readme_content.md'
@@ -224,7 +224,8 @@ def schedule_tasks():
                 git_commit()
                 print('update git')
         count_times += 1
-            
+
+
 # 启动定时任务
 if __name__ == "__main__":
     schedule_tasks()

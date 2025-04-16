@@ -76,9 +76,13 @@ if __name__ == "__main__":
     observer.schedule(event_handler, local_dir, recursive=True)
     observer.start()
     print(f"[INFO] Monitoring directory: {local_dir}")
+    count = 0
     try:
         while True:
-            time.sleep(5)  # 每 5 秒检测一次
+            time.sleep(3)  # 每 5 秒检测一次
+            count +=3
+            if count % 60 == 0:
+                os.system('scp root@66.187.4.10:/root/Quantify/okx/chart_for_group/*all_coin* ./chart_for_group/')
     except KeyboardInterrupt:
         observer.stop()
     observer.join()

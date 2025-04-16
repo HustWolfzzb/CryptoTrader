@@ -25,10 +25,10 @@ class SystemMonitor:
         file_handler = logging.FileHandler(log_file)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
-
-        # 新增标准输出处理器（控制台）
-        stream_handler = logging.StreamHandler(sys.stdout)  # 输出到stdout
-        stream_handler.setFormatter(formatter)  # 可单独定义格式（此处与文件一致）
+        #
+        # # 新增标准输出处理器（控制台）
+        # stream_handler = logging.StreamHandler(sys.stdout)  # 输出到stdout
+        # stream_handler.setFormatter(formatter)  # 可单独定义格式（此处与文件一致）
 
         # 避免重复添加处理器
         # 检查是否已有文件处理器
@@ -36,15 +36,15 @@ class SystemMonitor:
             isinstance(h, logging.FileHandler) for h in self.logger.handlers
         )
         # 检查是否已有标准输出处理器
-        has_stream_handler = any(
-            isinstance(h, logging.StreamHandler) and h.stream == sys.stdout
-            for h in self.logger.handlers
-        )
+        # has_stream_handler = any(
+        #     isinstance(h, logging.StreamHandler) and h.stream == sys.stdout
+        #     for h in self.logger.handlers
+        # )
 
         if not has_file_handler:
             self.logger.addHandler(file_handler)
-        if not has_stream_handler:
-            self.logger.addHandler(stream_handler)
+        # if not has_stream_handler:
+        #     self.logger.addHandler(stream_handler)
 
         self.logger.setLevel(logging.INFO)  # 设置日志级别
 

@@ -171,7 +171,6 @@ def fetch_kline_data(exchange, interval, limit, symbol):
     return df
 
 
-
 def download_and_process_binance_data(base_url, symbol, start_date, end_date, intervals):
     import requests
     import zipfile

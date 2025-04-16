@@ -10,6 +10,36 @@ def format_decimal_places(df, decimal_places=1):
     return df
 
 
+def align_decimal_places(num1: float, num2: float) -> float:
+    """
+    将第二个数调整为与第一个数相同的小数位数
+
+    参数:
+        num1: 第一个浮点数，用于确定小数位数
+        num2: 第二个浮点数，需要调整小数位数
+
+    返回:
+        调整小数位数后的第二个数
+    """
+    # 将数字转换为字符串以确定小数位数
+    str_num1 = format(num1, '.10f')  # 使用足够大的精度来避免科学计数法
+    str_num2 = format(num2, '.10f')
+
+    # 找到第一个数的小数部分
+    if '.' in str_num1:
+        # 去除末尾的0
+        decimal_part = str_num1.rstrip('0').split('.')[1]
+        decimal_places = len(decimal_part)
+    else:
+        decimal_places = 0
+
+    # 格式化第二个数以匹配小数位数
+    if decimal_places == 0:
+        return int(num2)
+    else:
+        return round(num2, decimal_places)
+
+
 def convert_columns_to_numeric(df, columns=None):
     """
     Convert specified columns to numeric, or automatically detect and convert
@@ -102,9 +132,9 @@ def load_para():
         return json.load(f)
 
 
-def save_para(paras):
+def save_para(paras, name='parameters.txt'):
     string = json.dumps(paras, indent=4)
-    with open('trade_log_okex/parameters.txt', 'w', encoding='utf8') as log:
+    with open(f'trade_log_okex/{name}', 'w', encoding='utf8') as log:
         log.write(string)
 
 
@@ -124,6 +154,28 @@ def save_gaps(gaps):
     with open('trade_log_okex/gaps.txt', 'w', encoding='utf8') as log:
         log.write(string)
 
+def update_rates(_rates):
+    with open('_rates.txt', 'w') as out:
+        out.write(json.dumps(_rates, indent=4))
+
+
+def get_rates():
+    _rates = {}
+    try:
+        _rates = json.load(open('_rates.txt', 'r'))
+    except Exception as e:
+        _rates = {
+        # 'ETH-USD-SWAP': {'gap': 30, 'sell': 3, 'price_bit': 2, 'amount_base':3, 'change_base':3000, 'change_gap': 120, 'change_amount':1},
+        'ETH-USDT-SWAP': {'gap': 18.88, 'sell': 6.66, 'price_bit': 2, 'amount_base':0.1, 'change_base':2000, 'change_gap': 88.88, 'change_amount':0.01},
+        'BTC-USDT-SWAP': {'gap': 288.88, 'sell':6.66 , 'price_bit': 1, 'amount_base':0.01, 'change_base':80000, 'change_gap': 8888.88, 'change_amount':0.01},
+                # 'SHIB-USDT-SWAP': {'gap': 0.0000002, 'sell': 10, 'price_bit': 8, 'amount_base':1, 'change_base':0.000026, 'change_gap': 0.000001, 'change_amount':1},
+                # 'DOGE-USDT-SWAP': {'gap': 0.0025, 'sell': 2.5, 'price_bit': 5, 'amount_base':1, 'change_base':0.14, 'change_gap': 0.01, 'change_amount':1},
+                # 'ETH-BTC': {'gap': 0.00008, 'sell': 10, 'price_bit': 5, 'amount_base':0.002, 'change_base':0.05150, 'change_gap': 0.0006, 'change_amount':0.001},
+                  }
+        print("Load Rates Failed")
+        with open('_rates.txt', 'w') as out:
+            out.write(json.dumps(_rates, indent=4))
+    return _rates
 
 def get_order_times(symbol):
     type_freq = {

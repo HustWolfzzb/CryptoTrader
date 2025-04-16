@@ -1,3 +1,5 @@
+import random
+
 from okex import get_okexExchage
 import pandas as pd
 import numpy as np
@@ -146,15 +148,30 @@ if __name__ == '__main__':
     try:
         import matplotlib.pyplot as plt
         for idx, time_gap in enumerate(['1m', '5m', '15m', '1h', '4h','1d']):
-            top10_coins = ['btc','bnb', 'trx', 'ton', 'eth', 'shib']
-            main1(top10_coins, f'good-{idx}', time_gap)
-            time.sleep(5)
-            top10_coins = ['btc', 'gala', 'sui', 'hbar', 'om', 'ada']
-            main1(top10_coins, f'bad-{idx}', time_gap)
-            time.sleep(5)
+            # top10_coins = ['btc','bnb', 'trx', 'ton', 'eth', 'shib']
+            # main1(top10_coins, f'good-{idx}', time_gap)
+            # time.sleep(5)
+            # top10_coins = ['btc', 'gala', 'sui', 'hbar', 'om', 'ada']
+            # main1(top10_coins, f'bad-{idx}', time_gap)
+            # time.sleep(5)
+            if idx == 5:
+                if random.randint(0, 100) % 99 != 0:
+                    continue
+            if idx == 4:
+                if random.randint(0, 50) % 49 != 0:
+                    continue
+            if idx == 3:
+                if random.randint(0, 20) % 19 != 0:
+                    continue
+            if idx == 2:
+                if random.randint(0, 2) % 2 != 0:
+                    continue
+            if idx == 1:
+                if random.randint(0, 1) == 0:
+                    continue
             main1(prex=f'original-{idx}', time_gap = time_gap)
             time.sleep(5)
-            top10_coins = ['btc', 'eth', 'xrp', 'bnb', 'sol', 'ada', 'doge', 'trx', 'ltc', 'shib', 'link', 'dot', 'om', 'apt', 'uni', 'hbar', 'ton', 'sui', 'avax', 'fil', 'ip', 'gala', 'sand']
+            top10_coins = ['btc', 'eth', 'xrp', 'bnb', 'sol', 'ada', 'doge', 'trx', 'ltc', 'shib', 'link', 'dot', 'om', 'apt', 'uni', 'hbar', 'ton', 'sui', 'avax', 'fil', 'ip', 'gala', 'sand', 'trump']
             main1(top10_coins, prex=f'all_coin-{idx}', time_gap = time_gap)
     except Exception as e:
         print(e)

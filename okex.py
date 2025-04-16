@@ -26,6 +26,7 @@ class OkexSpot:
         self._access_key = access_key
         self._secret_key = secret_key
         self._passphrase = passphrase
+        self.account_type = 'MAIN'
 
     def request(self, method, uri, params=None, body=None, headers=None, auth=False):
         """Initiate network request
@@ -116,8 +117,10 @@ class OkexSpot:
         """
        Get trade data.
        """
+        if symbol.find('-') == -1:
+            symbol = f'{symbol.upper()}-USDT-SWAP'
         uri = "/api/v5/market/trades"
-        params = {"instId": self.symbol, "limit": 1}
+        params = {"instId": symbol, "limit": 1}
         success, error = self.request(method="GET", uri=uri, params=params)
         return success, error
 
@@ -145,7 +148,42 @@ class OkexSpot:
         data_ = [x[:7] for x in success['data']]
         return pd.DataFrame(data=data_, columns=['trade_date', 'open', 'high', 'low', 'close', 'vol1', 'vol']), error
 
-    def get_asset(self, currency):
+    def get_zijin_asset(self, currency='USDT'):
+        """
+       Get account asset data.
+       :param currency: e.g. "USDT", "BTC"
+       """
+        params = {"ccy": currency}
+        result = self.request(
+            "GET", "/api/v5/asset/balances", params=params, auth=True
+        )
+        # print(result)
+        if result[0]['code'] == '0':  # 假设'0'是成功的响应代码
+            data = result[0]['data'][0]
+            return float(data['availBal'])
+        else:
+            print(result[0]['msg'])
+            return None
+
+    def get_jiaoyi_asset(self, currency='USDT'):
+        """
+       Get account asset data.
+       :param currency: e.g. "USDT", "BTC"
+       """
+        params = {"ccy": currency}
+        result = self.request(
+            "GET", "/api/v5/account/balance", params=params, auth=True
+        )
+        # print(result)
+        if result[0]['code'] == '0':  # 假设'0'是成功的响应代码
+            data = result[0]['data'][0]
+            
+            return float(data["details"][0]['availBal'])
+        else:
+            print(result[0]['msg'])
+            return None
+
+    def get_asset(self, currency='USDT'):
         """
        Get account asset data.
        :param currency: e.g. "USDT", "BTC"
@@ -156,6 +194,27 @@ class OkexSpot:
         )
         return result
 
+    def fetch_balance(self, currency='USDT'):
+        """
+        获取并记录给定货币的余额。
+        """
+        try:
+            response = self.get_asset(currency)[0]
+            if response['code'] == '0':  # 假设'0'是成功的响应代码
+                data = response['data'][0]
+                for i in range(len(currency.split(','))):
+                    available_balance = data['details'][i]['availBal']
+                    equity = data['details'][i]['eq']
+                    frozenBal = data['details'][i]['frozenBal']
+                    notionalLever = data['details'][i]['notionalLever']
+                    total_equity = data['totalEq']
+                    usd_equity = data['details'][i]['eqUsd']
+                    return  float(usd_equity)
+            else:
+                # 如果API返回的代码不是'0'，记录错误消息
+                return None
+        except Exception as e:
+            return None
 
     def get_posistion(self):
         params = {"instId": self.symbol}
@@ -171,17 +230,6 @@ class OkexSpot:
         uri = "/api/v5/trade/order"
         params = {"instId": self.symbol, "ordId": order_no}
         success, error = self.request(method="GET", uri=uri, params=params, auth=True)
-        return success, error
-
-    def get_price_limit(self):
-        """
-         * 获取限价
-         * 查询单个交易产品的最高买价和最低卖价
-         * 产品ID，如 BTC-USDT-SWAP， 仅适用于交割/永续/期权
-       """
-        uri = "/api/v5/public/price-limit"
-        params = {"instId": self.symbol}
-        success, error = self.request(method="GET", uri=uri, params=params)
         return success, error
 
     def buy(self, price, quantity, order_type='limit', tdMode='cross'):
@@ -261,6 +309,44 @@ class OkexSpot:
             return order_no, error
         else:
             return order_no, None
+
+    def transfer_money(self, usdt_amount, direction='z2j'):
+        """
+        资金划转函数：在资金账户和交易账户之间划转USDT。
+
+        :param usdt_amount: float，划转金额
+        :param direction: str，方向，可选：
+                - "fund_to_trade"：资金账户 -> 交易账户
+                - "trade_to_fund"：交易账户 -> 资金账户
+        :return: 请求结果或错误信息
+        """
+        if self.account_type != 'MAIN':
+            return None, '无操作权限！！'
+
+        from_to_map = {
+            "z2j": ("6", "18"),
+            "j2z": ("18", "6")
+        }
+
+        if direction not in from_to_map:
+            return None, "不支持的方向参数，必须为 'z2j' 或 'j2z'"
+
+        from_id, to_id = from_to_map[direction]
+
+        uri = "/api/v5/asset/transfer"
+        data = {
+            "ccy": "USDT",
+            "amt": str(usdt_amount),
+            "from": from_id,
+            "to": to_id,
+        }
+
+        resp, error = self.request(method="POST", uri=uri, body=data, auth=True)
+
+        if error:
+            return None, f"划转失败: {error}"
+        else:
+            return resp, None
 
     def revoke_orders(self, order_nos):
         """
@@ -349,7 +435,7 @@ class OkexSpot:
                     ccy_datas.append(x)
             return ccy_datas, None
 
-def get_rates():
+def get_rates(account=0):
     _rates = {}
     try:
         _rates = json.load(open('_rates.txt', 'r'))
@@ -365,13 +451,8 @@ def get_rates():
         print("Load Rates Failed")
         with open('_rates.txt', 'w') as out:
             out.write(json.dumps(_rates, indent=4))
-    access_key = ACCESS_KEY,
-    secret_key = SECRET_KEY,
-    passphrase = PASSPHRASE,
-    host = None
     # print(list(_rates.keys()))
-    exchanges = [get_okexExchage(x[:x.find('-')].lower()) for x in list(_rates.keys())]
-
+    exchanges = [get_okexExchage(x[:x.find('-')].lower(), account) for x in list(_rates.keys())]
     update_rates(_rates)
     return exchanges, _rates
 
@@ -1097,25 +1178,28 @@ def grid_eth(exchanges, _rates=None):
 
 
 
-def get_okexExchage(name='eth', account=0):
+
+
+def get_okexExchage(name='eth', account=1):
     if account == 1 and os.path.exists('../sub_config'):
         with open('../sub_config', 'r') as f:
             data = f.readlines()
             ak  = data[0].strip()
             sk  = data[1].strip()
             ph  = data[2].strip()
+            print(' Use Sub Okex Account.', end=' ')
+            exchange1 = OkexSpot(symbol="{}-USDT-SWAP".format(name.upper()),
+                                 access_key=ak, secret_key=sk, passphrase=ph, host=None)
+            exchange1.account_type = 'MAIN'
     else:
         ak  = ACCESS_KEY
         sk  = SECRET_KEY
         ph  = PASSPHRASE
+        print(' Use Main Okex Account.', end=' ')
+        exchange1 = OkexSpot(symbol="{}-USDT-SWAP".format(name.upper()),
+            access_key=ak, secret_key=sk, passphrase=ph, host=None )
+        exchange1.account_type = 'MAIN'
 
-    exchange1 = OkexSpot(
-        symbol="{}-USDT-SWAP".format(name.upper()),
-        access_key=ak,
-        secret_key=sk,
-        passphrase=ph,
-        host=None
-    )
     return exchange1
 
 def beautify_order_output(orders):
@@ -1124,7 +1208,6 @@ def beautify_order_output(orders):
     print('-' * len(header))
     for order_id, info in orders.items():
         print(f"{order_id:<25} {info['type']:<10} {round(info['price']):<20} {info['id']:<5} {info['rate']:<10.4f}")
-
 
 def pin_capture_trading(e2, interval=0.5, range_start=2, range_end=10, amount=1):
     current_price = e2.get_price_now()
