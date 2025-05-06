@@ -6,6 +6,8 @@ import time
 from average_method import get_good_bad_coin_group
 import json
 from SystemMonitor import SystemMonitor
+import threading
+
 
 rate_price2order = {
     'btc': 0.01,
@@ -31,7 +33,7 @@ rate_price2order = {
     'ip': 1,
     'gala': 10,
     'sand': 10,
-    'trump': 0.1,
+    # 'trump': 0.1,
 }
 
 
@@ -47,6 +49,9 @@ class OkexExecutionEngine:
         self.logger = self.monitor.logger
         # self.setup_logger()
         self.init_balance = float(self.fetch_balance('USDT')['total_equity_usd'])
+        self.watch_threads = []  # 存储所有监控线程
+        self.soft_orders_to_focus = []
+
 
     def setup_logger(self):
         """
@@ -405,7 +410,7 @@ class OkexExecutionEngine:
                 # Log any exceptions that occur during signal processing
                 self.logger.error(f"Error processing signal for {symbol}: {e}")
 
-    def set_coin_position_to_target(self, usdt_amounts=[10], symbols=['eth']):
+    def set_coin_position_to_target(self, usdt_amounts=[10], symbols=['eth'], soft=False):
         for coin, usdt_amount in zip(symbols, usdt_amounts):
             try:
                 symbol_full = f"{coin.upper()}-USDT-SWAP"
@@ -452,13 +457,13 @@ class OkexExecutionEngine:
                     })
                     if diff > 0:
                         order_price = mark_px * 1.0001
-                        self.place_incremental_orders(abs(diff), coin, 'sell')
+                        self.place_incremental_orders(abs(diff), coin, 'sell', soft=soft)
                         self.monitor.record_operation("SetCoinPosition", self.strategy_detail, {
                             "symbol": symbol_full, "action": "sell", "order_price": order_price, "amount": abs(diff)
                         })
                     elif diff < 0:
                         order_price = mark_px * 0.9999
-                        self.place_incremental_orders(abs(diff), coin, 'buy')
+                        self.place_incremental_orders(abs(diff), coin, 'buy', soft=soft)
                         self.monitor.record_operation("SetCoinPosition", self.strategy_detail, {
                             "symbol": symbol_full, "action": "buy", "order_price": order_price, "amount": abs(diff)
                         })
@@ -468,12 +473,12 @@ class OkexExecutionEngine:
                 try:
                 # if 1>0:
                     if usdt_amount < 0:
-                        self.place_incremental_orders(abs(usdt_amount), coin, 'sell')
+                        self.place_incremental_orders(abs(usdt_amount), coin, 'sell', soft=soft)
                         self.monitor.record_operation("SetCoinPosition", self.strategy_detail + "ExceptionFallback", {
                             "symbol": symbol_full, "action": "sell", "order_price": self.okex_spot.get_price_now(symbol_full), "amount": usdt_amount
                         })
                     else:
-                        self.place_incremental_orders(abs(usdt_amount), coin, 'buy')
+                        self.place_incremental_orders(abs(usdt_amount), coin, 'buy', soft=soft)
                         self.monitor.record_operation("SetCoinPosition", self.strategy_detail + "ExceptionFallback", {
                             "symbol": symbol_full, "action": "buy", "order_price": self.okex_spot.get_price_now(symbol_full), "amount": usdt_amount
                         })
@@ -481,13 +486,67 @@ class OkexExecutionEngine:
                     print('！！！！！！！！！！！！！艹了！', e)
                     self.monitor.handle_error(str(ex), context=f"Fallback in set_coin_position_to_target for {coin}")
                 continue
+        return self.soft_orders_to_focus
 
-    def place_incremental_orders(self, usdt_amount, coin, direction, rap=None):
+
+    def _order_tracking_logic(self, coins, soft_orders_to_focus):
+        start_time = time.time()
+        need_to_watch = False
+        time.sleep(10)
+        done_coin = []
+        while True:
+            for coin in coins:
+                try:
+                    time.sleep(3)
+                    if coin in done_coin:
+                        continue
+                    exchange = get_okexExchage(coin, account=self.account, show=False)
+                    exist_orders_for_coin = exchange.get_open_orders('SWAP')[0]
+                    if len(exist_orders_for_coin) == 0:
+                        done_coin.append(coin)
+                        continue
+                    for order in exist_orders_for_coin:
+                        if order in soft_orders_to_focus:
+                            data = exchange.get_order_status(order)[0]['data'][0]
+                            now_price = exchange.get_price_now()
+                            if now_price <= float(data['px']):
+                                new_price = now_price * 1.0001 if now_price * 1.0001 < float(data['px']) else float(data['px'])
+                            else:
+                                new_price = now_price * 0.9999  if now_price * 0.9999 > float(data['px']) else float(data['px'])
+                            exchange.amend_order(new_price, float(data['sz']), order)
+                            need_to_watch = True
+                    print(f'追踪【{coin}】中，它目前还有{len(exist_orders_for_coin)}个订单', end=' ')
+                except Exception as e:
+                    print('❌ 订单追踪失败：', coin, exist_orders_for_coin, len(soft_orders_to_focus), e)
+             # 这里之前多打了个tab 差点没把我弄死，每次都只监控一个订单就退出了，绝
+            if not need_to_watch or time.time() - start_time > 10800:
+                print(f'✅ {"到点了" if need_to_watch else "所有订单都搞定了"}，收工！')
+                self.soft_orders_to_focus = []
+                if len(self.watch_threads) >= 1:
+                    self.watch_threads = self.watch_threads[:-1]
+                return
+
+    def focus_on_orders(self, coins, soft_orders_to_focus):
+        """为每一组监控任务启动一个后台线程"""
+        t = threading.Thread(
+            target=self._order_tracking_logic,
+            args=(coins, soft_orders_to_focus),
+            daemon=True
+        )
+        t.start()
+        self.watch_threads.append(t)
+        print(f"🎯 新监控线程已启动，共 {len(self.watch_threads)} 个任务运行中")
+
+
+
+    def place_incremental_orders(self, usdt_amount, coin, direction, rap=None, soft=False):
         """
         根据usdt_amount下分步订单，并通过 SystemMonitor 记录审核信息
         操作中调用内部封装的买卖接口（本版本建议使用 HTTP 接口下单的方式）。
         """
         exchange = get_okexExchage(coin, self.account)
+        if soft:
+            soft_orders_to_focus = []
         if rap:
             unit_price = rate_price2order[rap]
         else:
@@ -521,33 +580,65 @@ class OkexExecutionEngine:
         })
         order_id1, order_id2, order_id3 = 0, 0, 0
         if direction.lower() == 'buy':
-            if size1 > 0:
-                order_id1, _ = exchange.buy(price, round(size1, 2), 'MARKET')
-            if size2 > 0:
-                order_id2, _ = exchange.buy(price, round(size2 * 0.1, 2), 'MARKET')
-            if size3 > 0:
-                order_id3, _ = exchange.buy(price, round(size3 * 0.01, 2), 'MARKET')
-            print(f"**BUY** order for {size1 if order_id1 else 0} + {size2 if order_id2 else 0} + {size3 if order_id3 else 0} units of 【{coin.upper()}】 at price {price}", end=' -> ')
+            if not soft:
+                if size1 > 0:
+                    order_id1, _ = exchange.buy(price, round(size1, 2), 'MARKET')
+                if size2 > 0:
+                    order_id2, _ = exchange.buy(price, round(size2 * 0.1, 2), 'MARKET')
+                if size3 > 0:
+                    order_id3, _ = exchange.buy(price, round(size3 * 0.01, 2), 'MARKET')
+            else:
+                if size1 > 0:
+                    order_id1, _ = exchange.buy(align_decimal_places(price, price * 0.9999), round(size1, 2))
+                    if order_id1:
+                        soft_orders_to_focus.append(order_id1)
+                if size2 > 0:
+                    order_id2, _ = exchange.buy(align_decimal_places(price, price * 0.9999), round(size2 * 0.1, 2))
+                    if order_id2:
+                        soft_orders_to_focus.append(order_id2)
+                if size3 > 0:
+                    order_id3, _ = exchange.buy(align_decimal_places(price, price * 0.9999), round(size3 * 0.01, 2))
+                    if order_id3:
+                        soft_orders_to_focus.append(order_id3)
+
+            print(f"\r**BUY** order for {size1 if order_id1 else 0} + {size2 if order_id2 else 0} + {size3 if order_id3 else 0} units of 【{coin.upper()}】 at price {price}", end=' -> ')
             self.monitor.record_operation("PlaceIncrementalOrders", self.strategy_detail, {
                 "symbol": symbol_full, "action": "buy", "price": price, "sizes": [size1, size2, size3]
             })
         elif direction.lower() == 'sell':
-            if size1 > 0:
-                order_id1, _ = exchange.sell(price, round(size1, 2), 'MARKET')
-            if size2 > 0:
-                order_id2, _ = exchange.sell(price, round(size2 * 0.1, 2), 'MARKET')
-            if size3 > 0:
-                order_id3, _ = exchange.sell(price, round(size3 * 0.01, 2), 'MARKET')
-            print(f" **SELL**  order for {size1 if order_id1 else 0} + {size2 if order_id2 else 0} + {size3 if order_id3 else 0}  units of 【{coin.upper()}】 at price {price}", end=' -> ')
+            if not soft:
+                if size1 > 0:
+                    order_id1, _ = exchange.sell(price, round(size1, 2), 'MARKET')
+                if size2 > 0:
+                    order_id2, _ = exchange.sell(price, round(size2 * 0.1, 2), 'MARKET')
+                if size3 > 0:
+                    order_id3, _ = exchange.sell(price, round(size3 * 0.01, 2), 'MARKET')
+            else:
+                if size1 > 0:
+                    order_id1, _ = exchange.sell(align_decimal_places(price, price * 1.0001), round(size1, 2))
+                    if order_id1:
+                        soft_orders_to_focus.append(order_id1)
+                if size2 > 0:
+                    order_id2, _ = exchange.sell(align_decimal_places(price, price * 1.0001), round(size2 * 0.1, 2))
+                    if order_id2:
+                        soft_orders_to_focus.append(order_id2)
+                if size3 > 0:
+                    order_id3, _ = exchange.sell(align_decimal_places(price, price * 1.0001), round(size3 * 0.01, 2))
+                    if order_id3:
+                        soft_orders_to_focus.append(order_id3)
+            print(f"\r **SELL**  order for {size1 if order_id1 else 0} + {size2 if order_id2 else 0} + {size3 if order_id3 else 0}  units of 【{coin.upper()}】 at price {price}", end=' -> ')
             self.monitor.record_operation("PlaceIncrementalOrders", self.strategy_detail, {
                 "symbol": symbol_full, "action": "sell", "price": price, "sizes": [size1, size2, size3]
             })
+
         remaining_usdt = usdt_amount - (
                 base_order_money * size1 + 0.1 * base_order_money * size2 + 0.01 * base_order_money * size3)
         # 任何剩余的资金如果无法形成更多订单，结束流程
         if remaining_usdt > 0:
-            print(f"Remaining USDT {round(remaining_usdt, 4)} ")
-
+            print(f"\rRemaining USDT {round(remaining_usdt, 4)} ", end='')
+        if soft:
+            self.soft_orders_to_focus += soft_orders_to_focus
+            return soft_orders_to_focus
 
 def init_all_thing():
     engine = OkexExecutionEngine()
