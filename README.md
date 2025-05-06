@@ -10,7 +10,7 @@
 
 ## 资产总额变化
 
-![资产变化趋势](asset_trend.png)
+![资产变化趋势](http://66.187.4.10:8000/static/images/asset_trend.png)
 
 ----
 
