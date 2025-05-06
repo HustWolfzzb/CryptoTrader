@@ -6,7 +6,7 @@
 ![资产变化趋势](http://66.187.4.10:8000/static/images/asset_trend.png)
 
 ## 模型计算指标的日线走势
-![反山寨币指标走势](http://66.187.4.10:8000/static/images/1d.png)
+![反山寨币指标走势](http://66.187.4.10:8000/static/images/1D.png)
 
 ----
 
