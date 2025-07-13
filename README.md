@@ -243,7 +243,7 @@ CryptoTrader consists of multiple modules, each implemented as a separate Python
 7. RUN!!! **我现在跑的就是这个，只需要配置好API，然后直接跑这份代码，没错的，里面目前建了几个经典策略，绝不服输！**
 
     ```bash
-   python Strategy.py
+   python Strategy.py btc 0 1 0
    ```
 
 ### Configuration
