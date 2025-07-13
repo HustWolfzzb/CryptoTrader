@@ -62,9 +62,9 @@ class ChangeHandler(FileSystemEventHandler):
                 remote_path = f"/home/zzb/Quantify/okx/{relative_path}"
                 transfer_file(file_path, remote_path, host)
 
-        if file_path.endswith(('.py', '.md')):
+        if file_path.endswith(('.py', '.md', '.txt')):
             relative_path = os.path.relpath(file_path, self.local_dir)
-            for host in [HOST_IP, '66.187.4.55']:
+            for host in ['66.187.4.10', '66.187.4.55']:
                 remote_path = f"/root/Quantify/okx/{relative_path}"
                 transfer_file(file_path, remote_path, host, HOST_USER)
 
@@ -81,8 +81,9 @@ if __name__ == "__main__":
         while True:
             time.sleep(3)  # 每 5 秒检测一次
             count +=3
-            if count % 60 == 0:
-                os.system('scp root@66.187.4.10:/root/Quantify/okx/chart_for_group/*all_coin* ./chart_for_group/')
+            if count % 600 == 0:
+                # os.system('scp root@66.187.4.10:/root/Quantify/okx/chart_for_group/*all_coin* ./chart_for_group/')
+                os.system('scp root@66.187.4.10:/root/Quantify/okx/trade_log_okex/coinPrices_for_openPosition.json ./trade_log_okex/')
     except KeyboardInterrupt:
         observer.stop()
     observer.join()

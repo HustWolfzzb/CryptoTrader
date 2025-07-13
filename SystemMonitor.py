@@ -1,70 +1,90 @@
-import logging
-import time
-import json
-import sys
+import logging, json, time, sys, threading, atexit, queue, os
+from logging.handlers import RotatingFileHandler
 
 class SystemMonitor:
-    def __init__(self, execution_engine,
-                 strategy_name='Classical'):
-        """
-        :param execution_engine: OkexExecutionEngine 实例，用于调用接口（现在内部所有 API 调用均为 HTTP 请求）
-        :param operation_log_file: 用于本地保存每一次操作记录的文件（JSON Lines 格式）
-        :param monitor_log_file: 系统监控日志文件
-        """
-        operation_log_file = "operation_log.jsonl"
-        monitor_log_file = "system_monitor.log"
+    # ---------- 参数 ----------
+    BATCH_SIZE   = 200       # 满 N 条落盘
+    FLUSH_SEC    = 3         # 或每隔 T 秒落盘
+    LOG_MAX_MB   = 5
+    LOG_BACKUP   = 5
+
+    def __init__(self, execution_engine, strategy_name='Classical'):
         self.execution_engine = execution_engine
-        self.operation_log_file = strategy_name + '_' + operation_log_file
-        self.last_price = None  # 用于市场价格监控
-        self.logger = logging.getLogger("SystemMonitor " + strategy_name)
-        self.setup_logger(strategy_name + '_' + monitor_log_file)
 
-    def setup_logger(self, log_file):
-        """配置日志记录，同时输出到文件和标准输出"""
-        # 创建文件处理器（原有逻辑）
-        file_handler = logging.FileHandler(log_file)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        #
-        # # 新增标准输出处理器（控制台）
-        # stream_handler = logging.StreamHandler(sys.stdout)  # 输出到stdout
-        # stream_handler.setFormatter(formatter)  # 可单独定义格式（此处与文件一致）
-
-        # 避免重复添加处理器
-        # 检查是否已有文件处理器
-        has_file_handler = any(
-            isinstance(h, logging.FileHandler) for h in self.logger.handlers
+        # 监控日志：滚动文件
+        self.logger = logging.getLogger("SystemMonitor-" + strategy_name)
+        self.logger.setLevel(logging.INFO)
+        log_file = f"{strategy_name}_system_monitor.log"
+        rh = RotatingFileHandler(
+            log_file,
+            maxBytes=self.LOG_MAX_MB * 1024 * 1024,
+            backupCount=self.LOG_BACKUP,
+            encoding="utf8"
         )
-        # 检查是否已有标准输出处理器
-        # has_stream_handler = any(
-        #     isinstance(h, logging.StreamHandler) and h.stream == sys.stdout
-        #     for h in self.logger.handlers
-        # )
+        rh.setFormatter(logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s'))
+        if not any(isinstance(h, RotatingFileHandler) for h in self.logger.handlers):
+            self.logger.addHandler(rh)
 
-        if not has_file_handler:
-            self.logger.addHandler(file_handler)
-        # if not has_stream_handler:
-        #     self.logger.addHandler(stream_handler)
+        # ---------- 操作日志：队列 + 后台 flush ----------
+        self.op_file = open(f"{strategy_name}_operation_log.json", "a", buffering=1)
+        self.q   = queue.Queue()
+        self._stop = threading.Event()
+        self.worker = threading.Thread(target=self._flush_loop, daemon=True)
+        self.worker.start()
+        atexit.register(self._shutdown)
 
-        self.logger.setLevel(logging.INFO)  # 设置日志级别
+    # ---------- 后台线程 ----------
+    def _flush_loop(self):
+        buf, last_flush = [], time.time()
+        while not self._stop.is_set():
+            try:
+                item = self.q.get(timeout=0.5)
+                buf.append(item)
+            except queue.Empty:
+                pass
 
-    def record_operation(self, operation, source_strategy, details):
-        """
-        记录一次操作，包含操作名称、来源策略及详细信息，
-        同时写入日志和本地文件（JSON Lines 格式）
-        """
-        log_entry = {
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "operation": operation,
-            "source": source_strategy,
-            "details": details
-        }
-        self.logger.info(f"Operation: {log_entry}")
+            now = time.time()
+            if len(buf) >= self.BATCH_SIZE or (buf and now - last_flush > self.FLUSH_SEC):
+                self._write_batch(buf)
+                buf.clear()
+                last_flush = now
+
+        # flush remaining
+        if buf:
+            self._write_batch(buf)
+
+    def _write_batch(self, batch):
         try:
-            with open(self.operation_log_file, "a") as f:
-                f.write(json.dumps(log_entry) + "\n")
+            self.op_file.writelines(line + "\n" for line in batch)
+            self.op_file.flush()
+            os.fsync(self.op_file.fileno())   # 保证落盘
         except Exception as e:
-            self.logger.error(f"Failed to write operation log: {e}")
+            self.logger.error("Failed batch write: %s", e)
+
+    def _shutdown(self):
+        self._stop.set()
+        self.worker.join()
+        self.op_file.close()
+
+    # ---------- 对外 API ----------
+    def record_operation(self, operation, source_strategy, details):
+        log_entry = {
+            "ts":   time.strftime("%Y-%m-%d %H:%M:%S"),
+            "op":   operation,
+            "src":  source_strategy,
+            "det":  details
+        }
+        # 快速入队；失败也不要阻塞
+        try:
+            self.q.put_nowait(json.dumps(log_entry))
+        except queue.Full:
+            self.logger.warning("Operation queue full; drop record")
+
+        # 同步写监控日志（小流量）
+        self.logger.info("OP %s | %s", operation, details)
+
+
 
     def check_api_status(self, symbol="ETH-USDT-SWAP"):
         """

@@ -6,24 +6,23 @@ from okex import get_okexExchage  # Assuming this provides the exchange interact
 from collections import deque
 import time
 from ExecutionEngine import OkexExecutionEngine
+from util import BeijingTime
 
-engine1 = OkexExecutionEngine()
+
+engine1 = OkexExecutionEngine(0)
 # Thread-safe deque to store balance data
-balance_data = deque(maxlen=50)
-
+balance_data = []
 
 with open('../sub_config', 'r') as f:
     data = f.readlines()
-ACCESS_KEY  = data[0].strip()
-SECRET_KEY  = data[1].strip()
-PASSPHRASE  = data[2].strip()
+ACCESS_KEY = data[0].strip()
+SECRET_KEY = data[1].strip()
+PASSPHRASE = data[2].strip()
 
-
-engine2 = OkexExecutionEngine()
+engine2 = OkexExecutionEngine(1)
 engine2.okex_spot._access_key = ACCESS_KEY
 engine2.okex_spot._secret_key = SECRET_KEY
 engine2.okex_spot._passphrase = PASSPHRASE
-
 
 rate_price2order = {
     'btc': 0.01,
@@ -36,24 +35,22 @@ rate_price2order = {
     'trx': 1000,
     'ltc': 1,
     'shib': 1000000,
-    'link' : 1,
-    'dot' : 1,
-    'om' : 10,
-    'apt' : 1,
-    'uni' : 1,
-    'hbar' : 100,
-    'ton' : 1,
-    'sui' : 1,
-    'avax' : 1,
-    'fil' : 0.1,
-    'ip' : 1,
+    'link': 1,
+    'dot': 1,
+    'om': 10,
+    'apt': 1,
+    'uni': 1,
+    'hbar': 100,
+    'ton': 1,
+    'sui': 1,
+    'avax': 1,
+    'fil': 0.1,
+    'ip': 1,
     'gala': 10,
-    'sand' : 10,
-    }
-    
+    'sand': 10,
+}
 
 app = Flask(__name__)
-
 
 
 # # Function to manage position checks and adjustments
@@ -116,13 +113,15 @@ app = Flask(__name__)
 #     return jsonify({"message": f"Adjustment triggered for {symbol}."})
 
 
-
 def track_balance():
+    global balance_data
     while True:
         balance1 = engine1.fetch_balance('USDT')['total_equity_usd']
         balance2 = engine2.fetch_balance('USDT')['total_equity_usd']
         # balance_data.append(float(balance1))
-        balance_data.append([float(balance1), float(balance2)])
+        balance_data.append(' '.join([BeijingTime(), str(round(float(balance1),2)), str(round(float(balance2),2))]))
+        if len(balance_data) > 60:
+            balance_data = balance_data[-40:]
         time.sleep(10)  # Delay for 10 seconds
 
 
@@ -169,26 +168,28 @@ def place_incremental_orders(usdt_amount, coin, direction, rap=None):
         print('煞笔，开不了这么小的订单')
         return
     size1 = order_amount // 100
-    size2 = (order_amount - size1 * 100 ) // 10
-    size3 = (order_amount - size1 * 100  - size2 *10)
+    size2 = (order_amount - size1 * 100) // 10
+    size3 = (order_amount - size1 * 100 - size2 * 10)
     if direction.lower() == 'buy':
-        if size1 > 0 : exchange.buy(price, round(size1,2), 'MARKET')
-        if size2 > 0 : exchange.buy(price, round(size2 * 0.1, 2), 'MARKET')
-        if size3 > 0 : exchange.buy(price, round(size3 * 0.01, 2), 'MARKET')
+        if size1 > 0: exchange.buy(price, round(size1, 2), 'MARKET')
+        if size2 > 0: exchange.buy(price, round(size2 * 0.1, 2), 'MARKET')
+        if size3 > 0: exchange.buy(price, round(size3 * 0.01, 2), 'MARKET')
         print(f"Placed additional buy order for {size1} + {size2} + {size3} units of {coin} at market price {price}")
     elif direction.lower() == 'sell':
-        if size1 > 0 : exchange.sell(price, round(size1, 2), 'MARKET')
-        if size2 > 0 : exchange.sell(price, round(size2 * 0.1, 2), 'MARKET')
-        if size3 > 0 : exchange.sell(price, round(size3 * 0.01, 2), 'MARKET')
-        print(f"Placed additional sell order for {size1} + {size2} + {size3}  units of 【{coin.upper()}】 at market price {price}")
-    remaining_usdt = usdt_amount - (base_order_money * size1 + 0.1 * base_order_money * size2 + 0.01 *  base_order_money * size3 )
+        if size1 > 0: exchange.sell(price, round(size1, 2), 'MARKET')
+        if size2 > 0: exchange.sell(price, round(size2 * 0.1, 2), 'MARKET')
+        if size3 > 0: exchange.sell(price, round(size3 * 0.01, 2), 'MARKET')
+        print(
+            f"Placed additional sell order for {size1} + {size2} + {size3}  units of 【{coin.upper()}】 at market price {price}")
+    remaining_usdt = usdt_amount - (
+                base_order_money * size1 + 0.1 * base_order_money * size2 + 0.01 * base_order_money * size3)
     # 任何剩余的资金如果无法形成更多订单，结束流程
     if remaining_usdt > 0:
         print(f"Remaining USDT {remaining_usdt} insufficient for further orders under the smallest unit constraint.")
     return {'status': 'success', 'data': 'Orders processed'}
 
+
 if __name__ == '__main__':
     # threading.Thread(target=manage_positions, daemon=True).start()
     threading.Thread(target=track_balance, daemon=True).start()
     app.run(debug=True, host='0.0.0.0', port=5000)
-

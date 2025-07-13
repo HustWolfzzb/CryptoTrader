@@ -108,7 +108,7 @@ def plot_asset_trend():
 
     # 绘制资产曲线
     plt.figure(figsize=(10, 6))
-    plt.plot(selected_times[-1000:], selected_equity[-1000:], label=f"Trend ({gap} mins")
+    plt.plot(selected_times[-300:], selected_equity[-300:], label=f"Trend ({gap} mins")
 
     plt.xlabel('Date')
     plt.ylabel('Total Pos (USD)')
@@ -120,6 +120,7 @@ def plot_asset_trend():
     
     # 保存图像
     plt.savefig('../trade_runtime_files/asset_trend.png')
+    os.system('cp ../trade_runtime_files/asset_trend.png /root/mysite/static/images/')
     plt.close()
 
 
@@ -216,8 +217,8 @@ def schedule_tasks():
             if ip.find('66') != -1:
                 plot_asset_trend()
                 # 更新 README.md
-                update_readme()
-                print('update readme')
+                # update_readme()
+                print('update readme asset_trend')
             if ip.find('66') == -1:
                 os.system(f'scp root@{HOST_IP}:/root/Quantify/trade_runtime_files/asset_trend.png ./; scp root@{HOST_IP}:/root/Quantify/okx/README.md ./; ')
                 # 提交更改到 Git

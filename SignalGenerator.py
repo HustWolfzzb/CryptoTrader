@@ -74,7 +74,7 @@ class SignalGenerator:
         Calculate Bollinger Band signals for buy and sell points.
         """
         # print(df.columns)
-        df['bolling_sell_point'] = df['bolling_sell_point'] = df.apply(lambda x: x.high \
+        df['bolling_sell_point'] = df.apply(lambda x: x.high \
             if x.close < x.bollinger_upper and x.high > x.bollinger_upper and x.bollinger_middle < 1.5 and x.bollinger_middle < 0.6 else np.nan,
                                                                        axis=1)
         df['bolling_buy_point'] = df.apply(lambda x: x.low \

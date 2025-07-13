@@ -200,63 +200,6 @@ class StockPricePredictor:
         dataset = TensorDataset(tensor_x, tensor_y)
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-    # 定义独立的处理函数供进程调用
-    def process_chunk(self, args):
-        df_chunk, window_size, FEATURES = args
-        X_chunk, y_chunk = [], []
-        for i in range(window_size, len(df_chunk) - 1):
-            window = df_chunk.iloc[i - window_size:i]
-            try:
-                x_price = (((window[FEATURES].T - window['close']) / window['close']).T - 1).values * 100
-                x_vol = window[['vol7_change', 'vol14_change', 'vol28_change']].values
-                x = np.concatenate([x_price, x_vol], axis=1)
-                X_chunk.append(x)
-                price_change_percent = (df_chunk.iloc[i + 1]['close'] / df_chunk.iloc[i]['close'] - 1) * 100
-                y_chunk.append(transform_to_class(price_change_percent))
-            except Exception as e:
-                print(f"Chunk Error at index {i}: {e}")
-        return X_chunk, y_chunk
-
-
-    # def prepare_data(self, num_workers=56):
-    #     # 检查和处理NaN值
-    #     self.df.ffill(inplace=True)
-    #     self.df.bfill(inplace=True)
-    #     self.add_features()
-    #
-    #     self.df['close'] = self.df['close'].astype(float)
-    #     self.df[self.features] = self.df[self.features].astype(float)
-    #
-    #     total_length = len(self.df)
-    #     indices = np.array_split(range(self.window_size, total_length - 1), num_workers)
-    #
-    #     # 为每个进程准备数据子集 (稍微扩大范围防止窗口丢失)
-    #     chunks = []
-    #     for idx in indices:
-    #         start = max(0, idx[0] - self.window_size)
-    #         end = min(total_length, idx[-1] + 2)
-    #         chunks.append(self.df.iloc[start:end].reset_index(drop=True))
-    #
-    #     # 多进程执行
-    #     with mp.Pool(processes=num_workers) as pool:
-    #         results = list(tqdm(pool.imap(self.process_chunk, [(chunk, self.window_size, FEATURES) for chunk in chunks]), total=num_workers, desc="并行数据处理"))
-    #
-    #     # 汇总各进程处理后的数据
-    #     X, y = [], []
-    #     for X_chunk, y_chunk in results:
-    #         X.extend(X_chunk)
-    #         y.extend(y_chunk)
-    #
-    #     print(f"Total samples: {len(X)}, Total labels: {len(y)}")
-    #
-    #     X = np.array(X)
-    #     y = np.array(y)
-    #
-    #     # 数据导出 (请定义 start_date, end_date)
-    #     self.export_data(X, y, start_date, end_date)
-    #
-    #     return X, y
-
     def prepare_data(self):
         # 检查和处理NaN值
         if self.df.isnull().any().any():
@@ -288,6 +231,7 @@ class StockPricePredictor:
         # self.plot_first_element(X, y)
         return np.array(X), np.array(y)
 
+    # @TODO 优化模型
     def build_model(self, input_shape, num_classes=6):
         self.model = nn.Sequential(
             nn.Flatten(),

@@ -1,5 +1,10 @@
-with open('../config', 'r') as f:
-    data = f.readlines()
+import os
+if os.path.exists('../local_config'):
+    with open('../local_config', 'r') as f:
+        data = f.readlines()
+else:
+    with open('../config', 'r') as f:
+        data = f.readlines()
 ACCESS_KEY  = data[0].strip()
 SECRET_KEY  = data[1].strip()
 PASSPHRASE = data[2].strip()

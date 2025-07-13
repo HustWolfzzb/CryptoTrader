@@ -124,6 +124,15 @@ class OkexSpot:
         success, error = self.request(method="GET", uri=uri, params=params)
         return success, error
 
+    def vol_24h(self):
+        """
+       Get 24h_vol data.
+       """
+        uri = "/api/v5/market/platform-24-volume"
+        params = {}
+        success, error = self.request(method="GET", uri=uri, params=params)
+        return success, error
+
     def get_price_now(self, symbol=None):
         """
          * 获取当前的价格
@@ -140,13 +149,30 @@ class OkexSpot:
        Get kline data.
        :param interval: kline period.
        """
+        if symbol.find('-') == -1:
+            symbol = f'{symbol.upper()}-USDT-SWAP' 
         if str(interval).endswith("h") or str(interval).endswith("d"):
             interval = str(interval).upper()
         uri = "/api/v5/market/candles"
         params = {"instId": symbol, "bar": interval, "limit": limit}
         success, error = self.request(method="GET", uri=uri, params=params)
-        data_ = [x[:7] for x in success['data']]
+        data_ = [x[:5] + x[6:8] for x in success['data']]
         return pd.DataFrame(data=data_, columns=['trade_date', 'open', 'high', 'low', 'close', 'vol1', 'vol']), error
+
+
+    def get_kline_origin(self, interval, limit=400, symbol = 'ETH-USDT'):
+        """
+       Get kline data.
+       :param interval: kline period.
+       """
+        if symbol.find('-') == -1:
+            symbol = f'{symbol.upper()}-USDT-SWAP' 
+        if str(interval).endswith("h") or str(interval).endswith("d"):
+            interval = str(interval).upper()
+        uri = "/api/v5/market/candles"
+        params = {"instId": symbol, "bar": interval, "limit": limit}
+        success, error = self.request(method="GET", uri=uri, params=params)
+        return success['data'], error
 
     def get_zijin_asset(self, currency='USDT'):
         """
@@ -170,17 +196,51 @@ class OkexSpot:
        Get account asset data.
        :param currency: e.g. "USDT", "BTC"
        """
-        params = {"ccy": currency}
-        result = self.request(
-            "GET", "/api/v5/account/balance", params=params, auth=True
-        )
-        # print(result)
-        if result[0]['code'] == '0':  # 假设'0'是成功的响应代码
-            data = result[0]['data'][0]
-            return float(data['availBal'])
-        else:
-            print(result[0]['msg'])
+        """
+        获取并记录给定货币的余额。
+        """
+        try:
+            response = self.get_asset(currency)[0]
+            if response['code'] == '0':  # 假设'0'是成功的响应代码
+                data = response['data'][0]
+                for i in range(len(currency.split(','))):
+                    available_balance = data['details'][i]['availBal']
+                    equity = data['details'][i]['eq']
+                    frozenBal = data['details'][i]['frozenBal']
+                    notionalLever = data['details'][i]['notionalLever']
+                    total_equity = data['totalEq']
+                    usd_equity = data['details'][i]['eqUsd']
+                    return float(available_balance)
+            else:
+                # 如果API返回的代码不是'0'，记录错误消息
+                return None
+        except Exception as e:
+            # 捕捉并记录任何其他异常
             return None
+
+    def fetch_balance(self, currency='USDT'):
+        """
+        获取并记录给定货币的余额。
+        """
+        try:
+            response = self.get_asset(currency)[0]
+            if response['code'] == '0':  # 假设'0'是成功的响应代码
+                data = response['data'][0]
+                for i in range(len(currency.split(','))):
+                    available_balance = data['details'][i]['availBal']
+                    equity = data['details'][i]['eq']
+                    frozenBal = data['details'][i]['frozenBal']
+                    notionalLever = data['details'][i]['notionalLever']
+                    total_equity = data['totalEq']
+                    usd_equity = data['details'][i]['eqUsd']
+                    return float(usd_equity)
+            else:
+                # 如果API返回的代码不是'0'，记录错误消息
+                return None
+        except Exception as e:
+            # 捕捉并记录任何其他异常
+            return None
+
 
     def get_asset(self, currency='USDT'):
         """
@@ -194,8 +254,18 @@ class OkexSpot:
         return result
 
 
-    def get_posistion(self):
-        params = {"instId": self.symbol}
+    def get_posistion(self, symbol=None):
+        if not symbol:
+            params = {"instId": self.symbol }
+        else:
+            if symbol.find(',') != -1:
+                symbolList = [x if x.find('-') != -1 else f'{x.upper()}-USDT-SWAP'  for x in symbol.split(',')]
+            else:
+                if symbol.find('USDT') == -1:
+                    symbolList = [ f'{symbol.upper()}-USDT-SWAP' ]
+                else:
+                    symbolList = [symbol.upper() ]
+            params = {"instId": ','.join(symbolList)}
         result = self.request(
             "GET", "/api/v5/account/positions", params=params, auth=True
         )
@@ -326,30 +396,6 @@ class OkexSpot:
         else:
             return resp, None
 
-    def fetch_balance(self, currency='USDT', show=False):
-        """
-        获取并记录给定货币的余额。
-        """
-        try:
-            response = self.get_asset(currency)[0]
-            if response['code'] == '0':  # 假设'0'是成功的响应代码
-                data = response['data'][0]
-                for i in range(len(currency.split(','))):
-                    available_balance = data['details'][i]['availBal']
-                    equity = data['details'][i]['eq']
-                    frozenBal = data['details'][i]['frozenBal']
-                    notionalLever = data['details'][i]['notionalLever']
-                    total_equity = data['totalEq']
-                    usd_equity = data['details'][i]['eqUsd']
-
-                    return float(usd_equity)
-            else:
-                # 如果API返回的代码不是'0'，记录错误消息
-                return None
-        except Exception as e:
-            # 捕捉并记录任何其他异常
-            return None
-
     def revoke_orders(self, order_nos):
         """
        Cancel mutilple orders by order ids.
@@ -437,6 +483,7 @@ class OkexSpot:
                     ccy_datas.append(x)
             return ccy_datas, None
 
+
 def get_rates(account=0):
     _rates = {}
     try:
@@ -454,7 +501,7 @@ def get_rates(account=0):
         with open('_rates.txt', 'w') as out:
             out.write(json.dumps(_rates, indent=4))
     # print(list(_rates.keys()))
-    exchanges = [get_okexExchage(x[:x.find('-')].lower(), account) for x in list(_rates.keys())]
+    exchanges = [get_okexExchage(x[:x.find('-')].lower(), account, show=False) for x in list(_rates.keys())]
     update_rates(_rates)
     return exchanges, _rates
 
@@ -1182,22 +1229,35 @@ def grid_eth(exchanges, _rates=None):
 
 
 
-def get_okexExchage(name='eth', account=0):
+def get_okexExchage(name='eth', account=0, show=True):
     if account == 1 and os.path.exists('../sub_config'):
         with open('../sub_config', 'r') as f:
             data = f.readlines()
             ak  = data[0].strip()
             sk  = data[1].strip()
             ph  = data[2].strip()
-            print(' Use Sub Okex Account.', end=' ')
+            if show:
+                print(' Sub Okex 1', end=' ')
             exchange1 = OkexSpot(symbol="{}-USDT-SWAP".format(name.upper()),
                                  access_key=ak, secret_key=sk, passphrase=ph, host=None)
-            exchange1.account_type = 'MAIN'
+            exchange1.account_type = 'SUB'
+    elif account == 2 and os.path.exists('../sub_config'):
+        with open('../sub_config_2', 'r') as f:
+            data = f.readlines()
+            ak  = data[0].strip()
+            sk  = data[1].strip()
+            ph  = data[2].strip()
+            if show:
+                print(' Sub Okex 2', end=' ')
+            exchange1 = OkexSpot(symbol="{}-USDT-SWAP".format(name.upper()),
+                                 access_key=ak, secret_key=sk, passphrase=ph, host=None)
+            exchange1.account_type = 'SUB'
     else:
         ak  = ACCESS_KEY
         sk  = SECRET_KEY
         ph  = PASSPHRASE
-        print(' Use Main Okex Account.', end=' ')
+        if show:
+            print(' Main Okex ', end=' ')
         exchange1 = OkexSpot(symbol="{}-USDT-SWAP".format(name.upper()),
             access_key=ak, secret_key=sk, passphrase=ph, host=None )
         exchange1.account_type = 'MAIN'

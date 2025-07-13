@@ -2,6 +2,69 @@ import  pandas as pd
 import  numpy as np
 import json
 import socket
+import os
+import inspect
+
+try:
+    import pyfiglet
+except Exception as e:
+    print('没这个pyfiglet包')
+
+base_url = "https://data.binance.vision/data/spot/daily/klines"
+
+
+def who_called_me():
+    # 获取当前调用栈的上一层
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back
+    caller_name = caller_frame.f_code.co_name
+    return caller_name
+
+def pad_dataframe_to_length_fast(df, length):
+    """优化版，适合大数据量"""
+    current_len = len(df)
+    if current_len >= length:
+        return df.iloc[:length].copy()
+
+    # 使用numpy快速填充
+    last_row = df.iloc[-1].values
+    fill_data = np.tile(last_row, (length - current_len, 1))
+
+    return pd.concat([
+        df,
+        pd.DataFrame(fill_data, columns=df.columns)
+    ], ignore_index=True)
+
+def cal_amount(coin, amount, coins, btc_rate=0.5, split_rate={}):
+    # if len(coins) == 1:
+    #     return amount
+    # else:
+    #     return amount / len(coins)
+
+    if btc_rate <= 0 or btc_rate >= 1:
+        btc_rate = 0.5
+    if coin == 'btc':
+        return amount * btc_rate
+    else:
+        if len(split_rate) == 0:
+            return amount * (1 - btc_rate) / (len(coins) - 1)
+        else:
+            if 'btc' in split_rate:
+                all_amount_of_shanzhai = sum({k:v for k,v in split_rate.items()}.values())
+            else:
+                all_amount_of_shanzhai = sum(split_rate.values())
+            shanzhai_rate = split_rate[coin] / all_amount_of_shanzhai
+            if shanzhai_rate <= 0 or shanzhai_rate > 1:
+                shanzhai_rate = 0
+            return amount * (1 - btc_rate) * shanzhai_rate
+
+
+def number_to_ascii_art(number):
+    """将数字转为ASCII艺术字"""
+    ascii_art = pyfiglet.figlet_format(str(number), font="big")  # 可选字体：slant, block等
+    return ascii_art
+
+
 
 def format_decimal_places(df, decimal_places=1):
     # Apply formatting to each floating-point column
@@ -127,9 +190,15 @@ def load_gaps():
         return json.load(f)
 
 
-def load_para():
-    with open('trade_log_okex/parameters.txt', 'r', encoding='utf8') as f:
-        return json.load(f)
+def load_para(name='parameters.txt'):
+    if not os.path.exists(name):
+        name = 'trade_log_okex/' + name
+    try:
+        with open(name, 'r', encoding='utf8') as f:
+            return json.load(f)
+    except Exception as e:
+        print('cannot load ', name, e)
+        return {}
 
 
 def save_para(paras, name='parameters.txt'):
@@ -158,6 +227,42 @@ def update_rates(_rates):
     with open('_rates.txt', 'w') as out:
         out.write(json.dumps(_rates, indent=4))
 
+
+def save_to_json(sorted_money, filename="limited_digits.json"):
+    """
+    将排序后的四个数字列表保存为 JSON 文件
+
+    参数:
+        sorted_money (list): 包含四个数字的列表
+        filename (str): 要保存的 JSON 文件名
+    """
+
+
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=4)
+
+
+
+def read_from_json(filename="limited_digits.json"):
+    """
+    从 JSON 文件读取四个数字数据
+
+    参数:
+        filename (str): 要读取的 JSON 文件名
+
+    返回:
+        dict: 包含四个数字的字典
+    """
+    try:
+        with open(filename, 'r') as f:
+            data = json.load(f)
+        return data
+    except FileNotFoundError:
+        print(f"错误: 文件 {filename} 不存在")
+        return None
+    except json.JSONDecodeError:
+        print(f"错误: 文件 {filename} 格式不正确")
+        return None
 
 def get_rates():
     _rates = {}
@@ -194,3 +299,111 @@ def get_order_times(symbol):
     return type_freq
 
 
+def batch_join_symbols(symbols, batch_size=9):
+    """
+    将字符串数组按指定批次大小拼接
+
+    参数:
+        symbols: 字符串列表
+        batch_size: 每批处理的数量，默认为9
+
+    返回:
+        拼接后的字符串列表
+    """
+    result = []
+    # 计算需要多少批次
+    num_batches = len(symbols) // batch_size
+    if len(symbols) % batch_size != 0:
+        num_batches += 1
+    for i in range(num_batches):
+    # 获取当前批次的元素
+        start_index = i * batch_size
+        end_index = start_index + batch_size
+        batch = symbols[start_index:end_index]
+        # 拼接当前批次的元素
+        joined_str = ",".join(batch)  # 使用空格连接，可根据需要修改连接符
+        result.append(joined_str)
+    return result
+
+
+rate_price2order = {
+    'btc': 0.01,
+    'eth': 0.1,
+    'xrp': 100,
+    'bnb': 0.01,
+    'sol': 1,
+    'ada': 100,
+    'doge': 1000,
+    'trx': 1000,
+    'ltc': 1,
+    'shib': 1000000,
+    'link': 1,
+    'dot': 1,
+    'om': 10,
+    'apt': 1,
+    'uni': 1,
+    'hbar': 100,
+    'ton': 1,
+    'sui': 1,
+    'avax': 1,
+    'fil': 0.1,
+    'ip': 1,
+    'gala': 10,
+    'sand': 10,
+    'trump': 0.1,
+    'pol': 10,
+    'icp': 0.01,
+    'cro': 10,
+    'aave': 0.1,
+    'xlm': 100,
+    'bch': 0.1,
+    'xaut': 0.001,
+    'core': 1,
+    'theta': 10,
+    'algo': 10,
+    'etc': 10,
+    'near': 10,
+    'hype': 0.1,
+    'inj': 0.1,
+    'ldo': 1,
+    'mkr': 0.01,
+    'pepe': 10000000,
+    'ondo': 10,
+    'stx': 10,
+    'arb': 10,
+}
+
+
+def get_min_amount_to_trade(get_okexExchage):
+    min_amount_to_trade = load_para('min_amount_to_trade.json')
+    print(min_amount_to_trade)
+    need_to_update = False
+    for k in rate_price2order.keys():
+        if not min_amount_to_trade.get(k, None):
+            need_to_update = True
+            break
+
+    if need_to_update:
+        try:
+            eth = get_okexExchage('eth', 0, False)
+        except Exception as e:
+            print(e,'没法初始化交易器啊老弟！')
+            return min_amount_to_trade
+        for coin in rate_price2order.keys():
+            if coin not in min_amount_to_trade:
+                eth.symbol = f'{coin.upper()}-USDT-SWAP'
+                price_to_buy = eth.get_price_now() * 0.95
+                amount = 1
+                deincrease_times = 0
+                order, err = eth.buy(price_to_buy, amount)
+                while order is not None:
+                    eth.revoke_order(order)
+                    amount /= 10
+                    deincrease_times += 1
+                    amount = round(amount, deincrease_times)
+                    order, err = eth.buy(price_to_buy, amount)
+                if deincrease_times > 0:
+                    deincrease_times -= 1
+                min_amount_to_trade[coin] = deincrease_times
+        save_para(min_amount_to_trade, 'min_amount_to_trade.json')
+    return min_amount_to_trade
