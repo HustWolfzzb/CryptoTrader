@@ -13,7 +13,7 @@ while True:
                 if asset and asset < 288:
                         x.transfer_money(3, 'z2j')
                 print(f'\r现在的余额是:{asset}, 资金账户的余额是：{x.get_zijin_asset()}', end='')
-                if asset > 5700:
+                if asset > 5888:
                         os.system('python3 Strategy.py btc 0 0 0')
                         break
         except Exception as e:

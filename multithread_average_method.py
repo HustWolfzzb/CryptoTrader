@@ -57,6 +57,7 @@ ls_cycle    = ['-','--','-.',':']
 
 color_iter = itertools.cycle(color_cycle)
 ls_iter    = itertools.cycle(ls_cycle)
+balance_file_path = '../trade_runtime_files/total_balance.json'
 
 
 
@@ -76,7 +77,7 @@ def save_snapshot(shared_data: dict):
         pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
     print(f"[{ts:%F %T}] 🔒 snapshot saved → {path.name}")
 
-def load_last_snapshot() -> dict | None:
+def load_last_snapshot():
     """读取最近一小时快照（若不存在返回 None）"""
     now = datetime.utcnow()
     last_hour = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
@@ -111,7 +112,74 @@ def clock_worker(shared_ref):
 
         time.sleep(30)           # 分辨率 30 秒即可
 
+
+
+# 获取资产总额并保存
+def log_asset():
+    total_equity_usd = exchange.fetch_balance('USDT')
     
+    # 保存到文件
+    if os.path.exists('total_balance.json'):
+        with open('total_balance.json', 'r') as f:
+            data = json.load(f)
+        data.append({'timestamp': time.time(), 'total_equity_usd': total_equity_usd})
+    else:
+        data = [{'timestamp': time.time(), 'total_equity_usd': total_equity_usd}]
+    
+    with open('total_balance.json', 'w') as f:
+        json.dump(data, f)
+    
+    return data
+
+# 绘制资产走势图
+def plot_asset_trend():
+    if not os.path.exists(balance_file_path):
+        return
+    
+    with open(balance_file_path, 'r') as f:
+        data = json.load(f)
+    
+    # 提取时间戳和资产总额
+    timestamps = [entry['timestamp'] for entry in data]
+    total_equity_usd = [float(entry['total_equity_usd']) for entry in data]
+    
+    # 将时间戳转换为日期时间格式
+    times = [datetime.utcfromtimestamp(ts) for ts in timestamps]
+    
+    # 选择每五分钟一个点
+    selected_times = []
+    selected_equity = []
+    
+    # 每五分钟选择一个点
+    gap = 1
+    for i in range(0, len(times), gap):  # 10分钟一个点
+        selected_times.append(times[i])
+        selected_equity.append(total_equity_usd[i])
+    
+    # 如果数据少于1000条，补充数据
+    while len(selected_equity) < 1000:
+        selected_equity.append(selected_equity[-1])
+        selected_times.append(selected_times[-1] + timedelta(minutes=5))
+
+    # 绘制资产曲线
+    plt.figure(figsize=(10, 6))
+    plt.plot(selected_times[-300:], selected_equity[-300:], label=f"Trend ({gap} mins")
+
+    plt.xlabel('Date')
+    plt.ylabel('Total Pos (USD)')
+    plt.title('Trend of my Pos')
+    plt.legend()
+    
+    # 格式化时间显示为每小时标记
+    plt.xticks(rotation=45)
+    
+    # 保存图像
+    plt.savefig('../trade_runtime_files/asset_trend.png')
+    os.system('scp ../trade_runtime_files/asset_trend.png root@66.187.4.10:/root/mysite/static/images/')
+    plt.close()
+
+
+
 def check_system_resources():
     """检查系统资源使用情况，必要时触发清理"""
     process = psutil.Process(os.getpid())
@@ -340,76 +408,75 @@ def draw_segment_levels(ax, levels, color, label, date_index, extend=10):
                 label=f'{label} #{i}' if i == 1 else None, zorder=4)
 
 def draw_allcoin_trend(time_gap, coins):
-    """
-    生成并保存 [time_gap]_allcoin_trend.png
-    图中每条曲线末尾用小字标币名
-    """
-    # 1. 拉数据
-    frames = {}
-    for c in coins:
-        df = fetch_and_process(c, time_gap)
-        if df is not None:
-            frames[c] = df
-
-    if len(frames) < 2:
-        print(f"[{time_gap}] 可用币种不足，跳过绘图")
+    # ① 取 close & vol Series 并 inner-join ------------------------------------------------
+    close_df = pd.concat(
+        {c: fetch_and_process(c, time_gap).set_index('trade_date')['close']
+         for c in coins}, axis=1, join='inner'
+    )
+    if close_df.shape[1] < 2:
+        print(f"[{time_gap}] 可用币不足")
         return
 
-    # 2. 拼共用时间轴
-    trend_dict = {}
-    for c, df in frames.items():
-        pct = (df['close'] / df['close'].iloc[0] - 1) * 100
-        trend_dict[c] = pct
-        date_index = df['trade_date']        # 任意币的日期轴
-
-
-    # 3⃣ 总成交量
     vol_df = pd.concat(
-        {c: df['vol'].rename(c) for c, df in frames.items()}, axis=1
-    ).dropna(how='any')
-    total_vol = vol_df.sum(axis=1)
+        {c: fetch_and_process(c, time_gap).set_index('trade_date')['vol']
+         for c in coins}, axis=1, join='inner'
+    ).reindex(close_df.index)           # 保证索引一致
 
+    # ② 价格 %Change
+    trend_df = close_df.div(close_df.iloc[0]).sub(1).mul(100)
 
-    # 3. 颜色和线型循环
-    colors = sns.color_palette("husl", len(trend_dict))      # 高区分度
+    # ③ 总成交量归一化
+    total_vol_norm = vol_df.sum(axis=1) / vol_df.sum(axis=1).iloc[0] * 100
+
+    # ④ 绘图 -------------------------------------------------------------------------------
+    fig, (ax_price, ax_vol) = plt.subplots(2,1, sharex=True, figsize=(20,14),
+                                           gridspec_kw={'height_ratios':[3,1]})
+
+    colors   = sns.color_palette("husl", len(trend_df.columns))
     ls_cycle = itertools.cycle(['-','--','-.',':'])
 
-    # 4. 绘图
 
-    fig, (ax, ax_v) = plt.subplots(
-        2, 1, sharex=True, figsize=(20, 12),
-        gridspec_kw={'height_ratios': [3, 1.2]}
-    )
-    
-    for (coin, trend), col in zip(trend_dict.items(), colors):
+    for col, colr in zip(trend_df, colors):
+        
+        is_best = col.lower() in best_performance_coins      # ← 你的最佳列表
+
+        lw      = 2 if is_best else 1
+        alpha   = 0.9 if is_best else 0.75
+        zorder  = 2   if is_best else 1
         ls = next(ls_cycle)
-        if coin.lower() == 'btc':
-            ax.plot(date_index, trend,  color='#CC5500', lw=2.5, ls='--')
-            ax.text(date_index.iloc[-1], trend.iloc[-1], coin.upper(),
-                fontsize=15, color=col, ha='left', va='center')
-
+        if is_best:
+            ls == '--'
         else:
-            ax.plot(date_index, trend, color=col, ls=ls, lw=1.2, alpha=.8)
-            # 在末端标注币名
-            ax.text(date_index.iloc[-1], trend.iloc[-1], coin.upper(),
-                    fontsize=10, color=col, ha='left', va='center')
+            ls = next(ls_cycle)
 
-    ax.set_title(f'All-Coin Relative Trend — {time_gap.upper()}  '
-                 f'({BeijingTime()})',
-                 fontsize=14)
-    ax.set_ylabel('% change from start')
-    ax.grid(alpha=.25)
+        ax_price.plot(trend_df.index, trend_df[col],
+                    color=colr, ls=next(ls_cycle),
+                  lw=lw, alpha=alpha, zorder=zorder,)
+        ax_price.text(trend_df.index[-1], trend_df[col].iloc[-1],
+                        col.upper() + ('★' if is_best else ''),
+                        color=colr,
+                        fontsize=12 if is_best else 9,
+                        fontweight='bold' if is_best else 'normal',
+                        ha='left', va='center')
 
+    # BTC 粗线置顶（若在列表中）
+    if 'btc' in trend_df.columns:
+        ax_price.plot(trend_df.index, trend_df['btc'], ls='--',
+                      color='#CC5500', lw=3, )
 
-    # --- 4.2 成交量 ---
-    ax_v.bar(date_index, total_vol, color='steelblue', alpha=.4, width=0.9)
-    ax2 = ax_v.twinx()
-    ax2.plot(date_index, total_vol.ewm(span=20).mean(),
-             color='darkblue', lw=1.6, label='EMA20')
-    ax_v.set_ylabel('Total Volume')
-    ax_v.set_xlabel('Time')
-    ax_v.grid(alpha=.25)
-    ax2.legend(loc='upper left', fontsize=7)
+    ax_price.grid(alpha=.3)
+    ax_price.set_title(f'All-Coin %Change — {time_gap.upper()}')
+    ax_price.set_ylabel('% change')
+    ax_price.legend(fontsize=8)
+
+    ax_vol.plot(trend_df.index, total_vol_norm, color='black', lw=1.8)
+    ax_vol.fill_between(trend_df.index, total_vol_norm,
+                        color='steelblue', alpha=.25)
+    ax_vol.set_title('Aggregate Volume (norm=100)')
+    ax_vol.set_ylabel('Vol index')
+    ax_vol.grid(alpha=.3)
+
+    plt.tight_layout()
 
 
     out = os.path.expanduser(
@@ -928,7 +995,7 @@ def get_good_bad_coin_group(length=5):
     coins = COINS
     volatilities = {coin: [] for coin in coins}
     if length > len(coins) // 2:
-        length = len(coins) // 2 - 1
+        print(f'全部币数 {len(COINS)}, 你需要的长度是:{length}')
     # Fetch data for each coin across each timeframe
     for coin in tqdm(coins, desc='coin process'):
         for timeframe in tqdm(timeframes, desc='time'):
@@ -967,10 +1034,9 @@ if __name__ == '__main__':
     launch_fetchers()
     time.sleep(len(COINS) * 1.2)
     start_time = time.time()
-    new_time = start_time
-    worst_performance_coins, best_performance_coins = get_good_bad_coin_group(20)
+    worst_performance_coins, best_performance_coins = get_good_bad_coin_group(18)
    # 将 shared_data 作为引用传入
-    threading.Thread(target=clock_worker, args=(shared_data,), daemon=True).start()
+   #  threading.Thread(target=clock_worker, args=(shared_data,), daemon=True).start()
     # 定义时间间隔到文件名的映射
     timegap_to_filename = {
         '1m':  '1m.png',
@@ -981,39 +1047,33 @@ if __name__ == '__main__':
         '1d':  '1D.png'
     }
     update_interval = {          # 每个周期的刷新秒数
-        '1m': 10,
-        '5m': 20,
-        '15m':30,
-        '1h': 40,
-        '4h': 50,
-        '1d': 60
+        '1m': 5,
+        '5m': 10,
+        '15m':15,
+        '1h': 20,
+        '4h': 25,
+        '1d': 30
     }
     last_run = {g: 0 for g in update_interval}   # 初始化
     # ---------------------------------------------------------------
     while True:
-        # try:
-        if 1>0:
+        try:
             now = time.time()
-
             for idx, gap in enumerate(['1m','5m','15m','1h','4h','1d']):
                 if now - last_run[gap] < update_interval[gap]:
                     continue                      # 未到刷新点
                 if idx == 1:
-                    for xx in ['1m', '5m', '15m', '1h']:
+                    for xx in ['1m', '5m', '15m']:
                         draw_allcoin_trend(xx, COINS)        # COINS 是你的币种列表
                 
                 # ---------- 生成并发送主图 ----------
                 chart_name = f'all_coin-{idx}'
                 good_group = list(set(['btc'] + best_performance_coins))
                 good_group = []
-                try:
-                    main1(COINS, prex=chart_name, time_gap=gap, good_group=good_group, all_rate= [1/len(good_group) for coinx in good_group] )
-                except Exception as e:
-                    print(e)
-                    continue
+                main1(COINS, prex=chart_name, time_gap=gap, good_group=good_group, all_rate= [1/len(good_group) for coinx in good_group] )
                 local = f'~/Quantify/okx/chart_for_group/comparison_chart_{chart_name}_{gap}.png'
                 remote= timegap_to_filename[gap]
-                if HOST_IP.find('66.187') != -1:
+                if HOST_IP.find('66.187.4.10') != -1:
                     os.system(f'cp {local} ~/mysite/static/images/{remote}')
                 else:
                     os.system(f'scp {local} root@66.187.4.10:/root/mysite/static/images/{remote}')
@@ -1025,9 +1085,12 @@ if __name__ == '__main__':
 
             # 每日刷新一次 best / worst 组合
             if int(now//3600) != int((now-10)//3600):
-                worst_performance_coins, best_performance_coins = get_good_bad_coin_group(20)
+                worst_performance_coins, best_performance_coins = get_good_bad_coin_group(18)
 
-        # except Exception as e:
-        #     print("主循环异常:", e)
+            if (now - start_time) % 600 == 0:
+                log_asset()
+                plot_asset_trend()
+        except Exception as e:
+            print("主循环异常:", e)
 
         time.sleep(2)        # 轻量轮询
