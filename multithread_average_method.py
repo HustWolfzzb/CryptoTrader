@@ -29,14 +29,34 @@ from pathlib import Path
 
 # === 配置 ===
 COINS = list(rate_price2order.keys())
+# TIMEFRAMES = {
+#     '1m': 10/len(COINS),  # 每 1 秒拉一次
+#     '5m': 1,  # 每 5  秒拉一次
+#     '15m': 2,
+#     '1h': 4,
+#     '4h': 6,
+#     '1d': 8
+# }
+
 TIMEFRAMES = {
-    '1m': 10/len(COINS),  # 每 1 秒拉一次
-    '5m': 1,  # 每 5  秒拉一次
-    '15m': 2,
-    '1h': 4,
-    '4h': 6,
-    '1d': 8
+    '1m': 20/len(COINS),  # 每 1 秒拉一次
+    '5m': 2,  # 每 5  秒拉一次
+    '15m': 4,
+    '1h': 6,
+    '4h': 8,
+    '1d': 10,
 }
+
+
+# TIMEFRAMES = {
+#     '1m': 3,  # 每 1 秒拉一次
+#     '5m': 6,  # 每 5  秒拉一次
+#     '15m': 10,
+#     '1h': 20,
+#     '4h': 40,
+#     '1d': 80
+# }
+
 HOST_IP = get_host_ip()
 KLINE_LENGTH = 300
 
@@ -428,14 +448,19 @@ def draw_allcoin_trend(time_gap, coins):
     # ③ 总成交量归一化
     total_vol_norm = vol_df.sum(axis=1) / vol_df.sum(axis=1).iloc[0] * 100
 
-    # ④ 绘图 -------------------------------------------------------------------------------
+    # ④ 计算ma10和布林带
+    ma10_df = close_df.rolling(10).mean()
+    bollinger_lower = close_df.rolling(20).mean() - 2 * close_df.rolling(20).std()
+
+    # ⑤ 绘图 -------------------------------------------------------------------------------
     fig, (ax_price, ax_vol) = plt.subplots(2,1, sharex=True, figsize=(20,14),
                                            gridspec_kw={'height_ratios':[3,1]})
 
     colors   = sns.color_palette("husl", len(trend_df.columns))
     ls_cycle = itertools.cycle(['-','--','-.',':'])
 
-
+    ma10_status = []
+    boll_status = []
     for col, colr in zip(trend_df, colors):
         
         is_best = col.lower() in best_performance_coins      # ← 你的最佳列表
@@ -459,10 +484,64 @@ def draw_allcoin_trend(time_gap, coins):
                         fontweight='bold' if is_best else 'normal',
                         ha='left', va='center')
 
+        # 标记点收集
+        up_ma10_x, up_ma10_y = [], []
+        down_ma10_x, down_ma10_y = [], []
+        up_boll_x, up_boll_y = [], []
+        down_boll_x, down_boll_y = [], []
+
+        for i in range(1, len(close_df)):
+            prev_val = close_df[col].iloc[i-1]
+            cur_val = close_df[col].iloc[i]
+            prev_ma10 = ma10_df[col].iloc[i-1]
+            cur_ma10 = ma10_df[col].iloc[i]
+            prev_boll = bollinger_lower[col].iloc[i-1]
+            cur_boll = bollinger_lower[col].iloc[i]
+
+            idx = trend_df.index[i]
+
+            # 上穿ma10
+            if prev_val < prev_ma10 and cur_val >= cur_ma10:
+                up_ma10_x.append(idx)
+                up_ma10_y.append(trend_df[col].iloc[i])
+            # 下穿ma10
+            if prev_val > prev_ma10 and cur_val <= cur_ma10:
+                down_ma10_x.append(idx)
+                down_ma10_y.append(trend_df[col].iloc[i])
+            # 上穿布林带
+            if prev_val < prev_boll and cur_val >= cur_boll:
+                up_boll_x.append(idx)
+                up_boll_y.append(trend_df[col].iloc[i])
+            # 下穿布林带
+            if prev_val > prev_boll and cur_val <= cur_boll:
+                down_boll_x.append(idx)
+                down_boll_y.append(trend_df[col].iloc[i])
+
+        # 批量画点
+        ax_price.scatter(up_ma10_x, up_ma10_y, marker='^', color='red', s=20, zorder=5, label=None)
+        ax_price.scatter(down_ma10_x, down_ma10_y, marker='v', color='blue', s=20, zorder=5, label=None)
+        ax_price.scatter(up_boll_x, up_boll_y, marker='*', color='red', s=20, zorder=5, label=None)
+        ax_price.scatter(down_boll_x, down_boll_y, marker='o', color='blue', s=20, zorder=5, label=None)
+
+        # 统计当前状态
+        cur_val = close_df[col].iloc[-1]
+        cur_ma10 = ma10_df[col].iloc[-1]
+        cur_boll = bollinger_lower[col].iloc[-1]
+        ma10_status.append(cur_val > cur_ma10)
+        boll_status.append(cur_val > cur_boll)
+
     # BTC 粗线置顶（若在列表中）
     if 'btc' in trend_df.columns:
         ax_price.plot(trend_df.index, trend_df['btc'], ls='--',
                       color='#CC5500', lw=3, )
+
+    n_above_ma10 = sum(ma10_status)
+    n_below_ma10 = len(ma10_status) - n_above_ma10
+    n_above_boll = sum(boll_status)
+    n_below_boll = len(boll_status) - n_above_boll
+
+    stat_text = f"> MA10: {n_above_ma10}  < MA10: {n_below_ma10}  |  > Boll: {n_above_boll}  < Boll: {n_below_boll}"
+    ax_price.text(0.01, 0.99, stat_text, transform=ax_price.transAxes, fontsize=14, color='black', va='top', ha='left', bbox=dict(facecolor='white', alpha=0.7))
 
     ax_price.grid(alpha=.3)
     ax_price.set_title(f'All-Coin %Change — {time_gap.upper()}')
@@ -624,10 +703,10 @@ def main1(top10_coins=['btc', 'eth', 'xrp', 'bnb', 'sol', 'ada', 'doge', 'trx', 
     lower_trend = (btc_bollinger_lower / btc_close_price[0] - 1) * 100
 
 
-    # ── ❶ 高点 > 上轨 且 收盘 < 上轨  → “上影刺破” -----------------------------
+    # ── ❶ 高点 > 上轨 且 收盘 < 上轨  → "上影刺破" -----------------------------
     above_upper = np.where( (high_trend >= upper_trend) & (btc_trend  <  upper_trend))[0]
 
-    # ── ❷ 低点 < 下轨 且 收盘 > 下轨  → “下影刺破” -----------------------------
+    # ── ❷ 低点 < 下轨 且 收盘 > 下轨  → "下影刺破" -----------------------------
     below_lower = np.where(  (low_trend  <= lower_trend) &  (btc_trend  >  lower_trend)  )[0]
 
 
@@ -787,7 +866,7 @@ def main1(top10_coins=['btc', 'eth', 'xrp', 'bnb', 'sol', 'ada', 'doge', 'trx', 
         upper_full.loc[idx] = upper
         lower_full.loc[idx] = lower
 
-        # 2.2 取前后差分判断“穿破”
+        # 2.2 取前后差分判断"穿破"
         prev = stack_profile.shift(1)
         up_cross = (prev < upper_full) & (stack_profile > upper_full)
         down_cross = (prev > lower_full) & (stack_profile < lower_full)

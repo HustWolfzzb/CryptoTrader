@@ -374,6 +374,7 @@ rate_price2order = {
 }
 
 
+
 def get_min_amount_to_trade(get_okexExchage):
     min_amount_to_trade = load_para('min_amount_to_trade.json')
     print(min_amount_to_trade)

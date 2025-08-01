@@ -306,6 +306,27 @@ def main1(top10_coins=['btc', 'eth', 'xrp', 'bnb', 'sol', 'ada', 'doge', 'trx', 
     # ── 4. 综合两重条件 ──────────────────────────────────
     target_idx = mask_1pct & mask_ext
 
+    WINDOW  = 20          # 滚动窗口
+    N_STD   = 2           # n × 标准差
+
+        # rolling mean / std
+    stack_mid   = stack_profile.rolling(WINDOW).mean()
+    stack_std   = stack_profile.rolling(WINDOW).std()
+
+    stack_upper = stack_mid + N_STD * stack_std
+    stack_lower = stack_mid - N_STD * stack_std
+
+    # 头部 NaN 用前向填充，确保整条曲线连贯
+    stack_mid   = stack_mid.fillna(method='bfill', limit=WINDOW-1)
+    stack_upper = stack_upper.fillna(method='bfill', limit=WINDOW-1)
+    stack_lower = stack_lower.fillna(method='bfill', limit=WINDOW-1)
+
+    ax1.plot(date_range, stack_mid,   color='gray',  lw=1,  ls='--', label='Stack BB Middle')
+    ax1.plot(date_range, stack_upper, color='black', lw=1,  ls='-.', label='Stack BB Upper')
+    ax1.plot(date_range, stack_lower, color='black', lw=1,  ls='-.', label='Stack BB Lower')
+    ax1.fill_between(date_range, stack_lower, stack_upper,  color='gray', alpha=0.08)            # 阴影区可选
+
+
     # ── 5. 绘制紫色三角形 ────────────────────────────────
     ax1.scatter(date_range[target_idx],  # 横坐标
                 stack_profile[target_idx],  # 纵坐标
@@ -349,6 +370,9 @@ def main1(top10_coins=['btc', 'eth', 'xrp', 'bnb', 'sol', 'ada', 'doge', 'trx', 
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
     ax1.legend(h1 + h2, l1 + l2, loc='upper left')
+
+
+
 
     #
     # # ── 1. 计算最后一个值 ───────────────────────────────

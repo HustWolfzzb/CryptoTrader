@@ -99,8 +99,8 @@ def btc_is_the_king(account=0, start_leverage=1.0, coins_to_be_bad=['eth'], good
     min_coin_amount_to_trade = get_min_amount_to_trade(get_okexExchage)
 
     last_operation_time = 0
-    grid_add = 0.004
-    grid_reduce = 0.005
+    grid_add = 0.005
+    grid_reduce = 0.033
     grid_add_times = 0
 
     # Para: 确定做多btc还是做空btc
@@ -535,11 +535,11 @@ def btc_is_the_king(account=0, start_leverage=1.0, coins_to_be_bad=['eth'], good
 
                                 # ---------- 真正执行：卖 → 买 ----------
                                 for coin, adj in sell_list:
-                                    engine.place_incremental_orders(adj * 1.02, coin, operation_for_else, soft=False)
+                                    engine.place_incremental_orders(adj * 1.02, coin, 'sell', soft=False)
                                     engine.monitor.record_operation("SellOther", '关税轮换', {"symbol": coin, "price":
                                         now_price_for_all_coins[coin], "money": adj})
 
-                                engine.place_incremental_orders(buy_amt * 1.02, good_coin, operation_for_btc,
+                                engine.place_incremental_orders(buy_amt * 1.02, good_coin, 'buy',
                                                                 soft=False)
                                 engine.monitor.record_operation("BuyGood", '关税轮换', {"symbol": good_coin,
                                                                                     "price": now_price_for_all_coins[
@@ -672,22 +672,6 @@ def print_options():
     print("  3. boll  —— 布林带穿越策略，示例：boll 300  | 先别跑，这个是我后期准备修改的")
     print("  4. grid  —— 网格合约策略，示例：grid 1000 0 eth,xrp | 网格策略，蛮不错的，建议可以直接python okex.py平替，这个我没正式跑，okex.py跑好几年了\n")
 
-
-def hello_world_spin_greet():
-    robot.home()  # INIT
-    start_t = now()
-    robot.rotate_in_place(speed=0.35)  # ≈ 20°/s · SPIN
-    while True:
-        person = sense_object("human")  # 视觉检测
-        if person:
-            stop_motion()
-            speak("Hello World")  # GREET
-            break
-        if now() - start_t > 15:  # TIMEOUT
-            stop_motion()
-            break
-        wait(0.2)
-    return "DONE"
 
 
 if __name__ == '__main__':
